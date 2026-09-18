@@ -93,9 +93,18 @@ body {
 }
 .lupe { left: 15px; pointer-events: none; }
 .leeren {
-  right: 8px; border: 0; background: none; cursor: pointer;
-  padding: 8px; border-radius: 50%; font-size: 20px; line-height: 1;
+  right: 6px; border: 0; background: none; cursor: pointer;
+  /* 🔴 Mindestens 40 x 40 px. Vorher waren es rund 36, und das Feld lag
+     darueber — wer daneben traf, landete im Suchfeld und nichts passierte. */
+  width: 40px; height: 40px; padding: 0; z-index: 2;
+  align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 22px; line-height: 1;
 }
+.leeren[hidden] { display: none; }
+/* Safari legt bei type="search" ein eigenes Loeschkreuz an. Zwei Kreuze
+   uebereinander, von denen nur eines etwas tut, sind schlimmer als keines. */
+#suchfeld::-webkit-search-cancel-button,
+#suchfeld::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
 .zaehler { margin-top: 8px; font-size: 13px; color: var(--leise); min-height: 18px; }
 
 /* ---------- Karten ---------- */
@@ -294,14 +303,16 @@ nav svg { width: 24px; height: 24px; }
     </div>
     <button class="knopf zweit" id="abmelden">Abmelden</button>
     <div class="feld">
-      <div class="titel">Was die PIN leistet</div>
+      <div class="titel">Was der Zugang leistet</div>
       <div class="ehrlich">
-        Sie hält jemanden ab, der das entsperrte Gerät kurz in die Hand nimmt.
-        <b>Sie schützt die Daten nicht</b> – die liegen unverschlüsselt in
-        derselben Datei, und wer sie im Texteditor öffnet, liest alles, ohne je
-        eine PIN gesehen zu haben. Echter Schutz kommt erst mit dem Backend:
-        dort liegt die Liste nicht auf dem Gerät, und die Anmeldung entscheidet,
-        was überhaupt ausgeliefert wird.
+        Die Liste liegt <b>nicht auf diesem Gerät</b>. Sie wird nach der
+        Anmeldung vom Server geholt und ist weg, sobald du dich abmeldest.
+        Ohne gültige Anmeldung gibt der Server nichts heraus – auch nicht an
+        jemanden, der den Quelltext dieser Seite liest.
+        <br><br>
+        Was das <b>nicht</b> leistet: Wer dein entsperrtes Gerät in die Hand
+        bekommt, während du angemeldet bist, sieht alles. Und wer die Liste
+        einmal gesehen hat, kann sie abschreiben – dagegen hilft keine Technik.
       </div>
     </div>
     <div class="feld">
@@ -311,11 +322,11 @@ nav svg { width: 24px; height: 24px; }
     <div class="hinweis" style="text-align:left">
       <h3>Was dieser Prototyp noch nicht kann</h3>
       <ul>
-        <li><b>Bearbeiten und Hinzufügen</b> – braucht das Backend, denn
-            Änderungen sollen ja nur online möglich sein</li>
-        <li><b>Abgleich zwischen mehreren Monteuren</b> – braucht das Backend</li>
-        <li><b>Anmeldung gilt nur auf diesem Gerät</b> – PIN und Zustimmung
-            liegen lokal, sie wandern nicht mit</li>
+        <li><b>Bearbeiten und Hinzufügen</b> – die Liste ist bisher nur zum
+            Nachschlagen da</li>
+        <li><b>Änderungen weitergeben</b> – jeder sieht denselben Stand,
+            niemand kann ihn ändern</li>
+        <li><b>Offline arbeiten</b> – ohne Netz kommt die Liste nicht an</li>
       </ul>
       <p style="margin-bottom:0">Gebaut ist der Teil, der ohne all das auskommt:
          die Suche über den echten, vollständigen Bestand.</p>
@@ -420,12 +431,20 @@ nav svg { width: 24px; height: 24px; }
     Suche
   </button>
   <button data-seite="einst">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.6 1.6 0 008 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H2a2 2 0 110-4h.1A1.6 1.6 0 003.6 8a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H8a1.6 1.6 0 001-1.5V2a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V8a1.6 1.6 0 001.5 1H22a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></svg>
+    <!-- 🔴 Vorher stand hier ein Zahnrad aus einem einzigen, sehr feinen
+         Pfad: zwoelf Zaehne mit Rundungen von 1,6 px. Bei 24 px Anzeige fallen
+         die Zaehne ineinander und es sieht aus wie ein Fleck. Drei Schieber
+         haben bei dieser Groesse nur gerade Linien und drei Punkte - das haelt
+         jede Aufloesung aus. -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h8M16 17h4"/>
+      <circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="12" r="2.2"/><circle cx="14" cy="17" r="2.2"/>
+    </svg>
     Einstellungen
   </button>
 </nav>
 
-<script src="suche.js?v=20260918-ad51a001"></script>
+<script src="suche.js?v=20260918-b470bb9b"></script>
 <script>
 // ---------- Anmeldung (Supabase) ----------
 /* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
@@ -692,13 +711,36 @@ try { gemerkt = localStorage.getItem('thema') || 'system'; } catch (e) {}
 setzeThema(gemerkt);
 
 // ---------- Navigation ----------
-const seiten = { suche: 'seite-suche', karte: 'seite-karte', einst: 'seite-einst' };
+/* 🔴 Hier stand bis zum 18.09.2026 ein `karte: 'seite-karte'` — die Karte ist
+   am 17.09. auf Ansage ganz herausgeflogen, dieser Eintrag blieb stehen.
+   Folge: beim Tippen auf "Einstellungen" versteckte die Schleife zuerst die
+   Suche, stuerzte dann ueber das fehlende Element und kam bei den
+   Einstellungen nie an. Auf dem Schirm war beides weg, und es sah aus, als
+   waere die Seite leer.
+   ⚠️ Der Prüfstand war dabei gruen: eine Prüfung hielt fest, dass von der
+   Karte "kein Rest uebrig" ist — sie suchte nach Markup und Stil, nicht nach
+   einem Namen in einer Nachschlagetabelle. Genau die Sorte Luecke, die man
+   erst beim Benutzen sieht. */
+const seiten = { suche: 'seite-suche', einst: 'seite-einst' };
 document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('aktiv', x === b));
-  for (const [k, id] of Object.entries(seiten)) document.getElementById(id).hidden = (k !== b.dataset.seite);
-  zuDetail(null);
+  seiteZeigen(b.dataset.seite);
 });
+
+function seiteZeigen(welche) {
+  if (!seiten[welche]) welche = 'suche';
+  document.querySelectorAll('nav button').forEach(
+    x => x.classList.toggle('aktiv', x.dataset.seite === welche));
+  for (const [k, id] of Object.entries(seiten)) {
+    const el = document.getElementById(id);
+    /* Fehlt eine Seite, wird sie uebersprungen statt alles abzubrechen. Der
+       Fehler oben hat genau daran gelegen: ein fehlendes Element hat die
+       ganze Umschaltung mitgerissen. */
+    if (el) el.hidden = (k !== welche);
+  }
+  zuDetail(null);
+  window.scrollTo(0, 0);
+}
 
 // ---------- Index ----------
 const STATUS_FARBE = {
@@ -888,12 +930,61 @@ function zeigen() {
 
 let timer = null;
 feldEl.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(zeigen, 90); });
-leerenEl.addEventListener('click', () => { feldEl.value = ''; zeigen(); feldEl.focus(); });
+/* 🔴 Warum das Leeren an `pointerdown` haengt und nicht nur an `click`:
+   steht die Tastatur offen, verbraucht der erste Fingertipp auf etwas anderes
+   auf dem iPhone nur das Schliessen der Tastatur — der Klick kommt nie an.
+   Auf dem Schirm sieht das aus wie ein Knopf, der nichts tut, und genau so
+   hat Karl es am 18.09.2026 gemeldet. `preventDefault` haelt den Fokus im
+   Feld, dann wirkt der erste Tipp.
+   Der `click`-Weg bleibt fuer Maus und Tastatur — er prueft, ob ueberhaupt
+   noch etwas dasteht, damit nicht beide Wege nacheinander feuern. */
+function suchfeldLeeren() { feldEl.value = ''; zeigen(); feldEl.focus(); }
+leerenEl.addEventListener('pointerdown', e => { e.preventDefault(); suchfeldLeeren(); });
+leerenEl.addEventListener('click', e => {
+  e.preventDefault();
+  if (feldEl.value) suchfeldLeeren();
+});
 
 // ---------- Detail ----------
 const detailEl = document.getElementById('detail');
+/* Wo die Trefferliste stand, als die Detailansicht aufging. Ohne das landet
+   man nach dem Zurueckgehen ganz oben und sucht seinen Treffer neu — bei
+   10.602 Datensaetzen ist das kein Schoenheitsfehler.
+   🔴 Dazu der Grund fuer die Sperre: die Detailansicht liegt als eigene Ebene
+   ueber der Seite, die Liste darunter scrollt aber weiter mit. Auf dem iPhone
+   fuehrt das dazu, dass eine Wischbewegung mal die eine und mal die andere
+   Ebene bewegt — und man "kommt nicht wieder hoch". */
+let listePos = 0;
+
+function listeSperren(an) {
+  const b = document.body;
+  if (an) {
+    listePos = window.scrollY || 0;
+    b.style.position = 'fixed';
+    b.style.top = -listePos + 'px';
+    b.style.left = '0';
+    b.style.right = '0';
+  } else {
+    b.style.position = '';
+    b.style.top = '';
+    b.style.left = '';
+    b.style.right = '';
+    window.scrollTo(0, listePos);
+  }
+}
+
 function zuDetail(s, adr) {
-  if (!s) { detailEl.classList.remove('auf'); detailEl.innerHTML = ''; return; }
+  if (!s) {
+    if (detailEl.classList.contains('auf')) listeSperren(false);
+    detailEl.classList.remove('auf'); detailEl.innerHTML = '';
+    return;
+  }
+  if (!detailEl.classList.contains('auf')) {
+    listeSperren(true);
+    /* Ein Schritt in der Verlaufsliste, damit der Zurueck-Wisch am iPhone die
+       Detailansicht schliesst, statt die ganze App zu verlassen. */
+    try { history.pushState({ detail: true }, ''); } catch (e) {}
+  }
   const ziel = encodeURIComponent(mapsZiel(s, adr));
   const zeile = (t, v) => v ? `<div class="feld"><div class="titel">${t}</div><div class="wert">${esc(v)}</div></div>` : '';
   detailEl.innerHTML = `
@@ -926,8 +1017,20 @@ function zuDetail(s, adr) {
     </div>`;
   detailEl.classList.add('auf');
   detailEl.scrollTop = 0;
-  document.getElementById('zurueck').onclick = () => zuDetail(null);
+  document.getElementById('zurueck').onclick = () => zurueckGehen();
 }
+
+/* Ein Weg zurueck, egal womit ausgeloest: Knopf, Wisch oder Zurueck-Taste.
+   Zwei getrennte Wege waeren zwei Gelegenheiten, die Verlaufsliste und den
+   Bildschirm auseinanderlaufen zu lassen. */
+function zurueckGehen() {
+  if (history.state && history.state.detail) history.back();
+  else zuDetail(null);
+}
+
+window.addEventListener('popstate', () => {
+  if (detailEl.classList.contains('auf')) zuDetail(null);
+});
 ergEl.addEventListener('click', e => {
   const a = e.target.closest('.satz'); if (!a) return;
   const t = letzte[+a.dataset.i];
@@ -1010,7 +1113,7 @@ async function starten() {
    zuverlaessig. Hilft auch das nicht, kommt eine Leiste statt einer
    Endlosschleife: zweimal dasselbe zu versuchen und auf ein anderes Ergebnis
    zu hoffen, waere keine Loesung. */
-const FASSUNG = '20260918-ad51a001';
+const FASSUNG = '20260918-b470bb9b';
 
 function neueFassungZeigen(neu) {
   if (document.getElementById('fassung-leiste')) return;
