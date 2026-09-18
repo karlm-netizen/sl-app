@@ -424,7 +424,7 @@ nav svg { width: 24px; height: 24px; }
       </div>
       <div id="anm-fehler" class="fehler" hidden></div>
       <button class="knopf" id="anm-los">Anmelden</button>
-      <button class="knopf zweit" id="anm-zurueck">‹ Anderer Monteur</button>
+      <button class="knopf zweit" id="anm-zurueck">‹ Anderes Konto</button>
       <p id="anm-hinweis">Beim ersten Mal das Startpasswort eingeben —
         danach legst du dein eigenes fest.</p>
     </div>
@@ -449,6 +449,83 @@ nav svg { width: 24px; height: 24px; }
   </main>
 </div>
 
+<style>
+/* Die Bearbeiten-Maske liegt ueber der Detailansicht (z-index 45 gegen 40),
+   aber unter der Anmeldung (60) — wer waehrenddessen herausfliegt, soll die
+   Anmeldung sehen und nicht ein halb ausgefuelltes Formular. */
+#bearbeiten {
+  position: fixed; left: 0; right: 0; top: 0; bottom: var(--leiste);
+  z-index: 45; background: var(--bg); overflow-y: auto; display: none;
+  overscroll-behavior: contain; padding: 0 0 24px;
+}
+#bearbeiten.auf { display: block; }
+#bearbeiten .d-kopf { display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid var(--linie);
+  position: sticky; top: 0; background: var(--bg); z-index: 2; }
+#bearbeiten main { padding: 16px; max-width: 760px; }
+#bearbeiten .feld { margin-bottom: 16px; }
+#bearbeiten .titel { font-size: 13px; color: var(--leise); margin-bottom: 6px; }
+#bearbeiten input, #bearbeiten textarea, #bearbeiten select {
+  width: 100%; padding: 13px 14px; font-size: 17px;
+  color: var(--text); background: var(--karte);
+  border: 1px solid var(--linie); border-radius: 12px; outline: none;
+  font-family: inherit;
+}
+#bearbeiten textarea { min-height: 90px; resize: vertical; }
+#bearbeiten input:focus, #bearbeiten textarea:focus, #bearbeiten select:focus {
+  border-color: var(--akzent);
+}
+#bearb-fehler { margin-bottom: 12px; }
+.bearb-knopf { margin-top: 10px; }
+.geaendert {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  background: var(--akzent-bg); color: var(--akzent);
+  font-size: 11px; font-weight: 700; vertical-align: middle;
+}
+</style>
+
+<div id="bearbeiten">
+  <div class="d-kopf">
+    <button class="zurueck" id="bearb-ab">‹ Abbrechen</button>
+    <b id="bearb-nr"></b>
+  </div>
+  <main>
+    <div class="feld">
+      <div class="titel">Status</div>
+      <select id="b-status">
+        <option value="vollstaendig">Datensatz vollständig</option>
+        <option value="ohne_schluessel">Ohne Schlüssel</option>
+        <option value="in_beschaffung">In Beschaffung</option>
+        <option value="passt_nicht">Passt nicht</option>
+        <option value="passt_teilweise">Passt teilweise</option>
+        <option value="unklar">Unklar</option>
+      </select>
+    </div>
+    <div class="feld">
+      <div class="titel">Anzahl vorhandener Schlüssel</div>
+      <input id="b-anzahl" type="number" inputmode="numeric" min="0" max="9999">
+    </div>
+    <div class="feld">
+      <div class="titel">Ansprechpartner</div>
+      <input id="b-ansprechpartner" type="text">
+    </div>
+    <div class="feld">
+      <div class="titel">Telefon</div>
+      <input id="b-telefon" type="text" inputmode="tel">
+    </div>
+    <div class="feld">
+      <div class="titel">Bemerkungen</div>
+      <textarea id="b-bemerkungen"></textarea>
+    </div>
+    <div id="bearb-fehler" class="fehler" hidden></div>
+    <button class="knopf bearb-knopf" id="bearb-speichern">Speichern</button>
+    <p style="font-size:13px;color:var(--leise);margin-top:16px">
+      Schlüsselnummer und Adresse lassen sich nicht ändern – sie sagen, um
+      welchen Eintrag es geht. Änderungen liegen neben der eingelesenen Liste,
+      der Bestand aus dem PDF bleibt unangetastet.</p>
+  </main>
+</div>
+
 <div id="detail"></div>
 
 <nav>
@@ -470,7 +547,7 @@ nav svg { width: 24px; height: 24px; }
   </button>
 </nav>
 
-<script src="suche.js?v=20260918-e7a4e0e6"></script>
+<script src="suche.js?v=20260918-e6405ea8"></script>
 <script>
 // ---------- Anmeldung (Supabase) ----------
 /* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
@@ -502,6 +579,11 @@ function sichere(schluessel, wert) {
    niemand je bekommt, waere nur eine Gelegenheit, sich zu vertippen. */
 const MONTEURE = 10;
 const adresse = (nr) => 'monteur' + nr + '@sl.local';
+/* Konto 1 heisst seit dem 18.09.2026 "Admin 1" und darf als einziges
+   bearbeiten. Die Anmeldeadresse bleibt monteur1@sl.local — sie sieht
+   niemand, und sie umzubenennen haette jedes gesetzte Passwort gekostet. */
+const NAMEN = { 1: 'Admin 1' };
+const nameVon = (nr) => NAMEN[nr] || ('Monteur ' + nr);
 
 const anmEl      = document.getElementById('anmeldung');
 const wahlEl     = document.getElementById('monteur-wahl');
@@ -529,7 +611,7 @@ function monteurKnoepfe() {
     const b = document.createElement('button');
     b.type = 'button';
     b.dataset.monteur = String(i);
-    b.textContent = 'Monteur ' + i;
+    b.textContent = nameVon(i);
     b.onclick = () => zurEingabe(i);
     wahlEl.appendChild(b);
   }
@@ -540,7 +622,7 @@ function zurEingabe(nr) {
   wahlBlock.hidden = true;
   neuBlock.hidden = true;
   pinBlock.hidden = false;
-  anmUnter.textContent = 'Monteur ' + nr;
+  anmUnter.textContent = nameVon(nr);
   pwFeld.value = '';
   fehlerZeigen('');
   pwFeld.focus();
@@ -559,7 +641,7 @@ function zumWechsel() {
   wahlBlock.hidden = true;
   pinBlock.hidden = true;
   neuBlock.hidden = false;
-  anmUnter.textContent = 'Monteur ' + (gewaehlt || '') + ' – Passwort ändern';
+  anmUnter.textContent = nameVon(gewaehlt) + ' – Passwort ändern';
   neuFeld.value = ''; neuFeld2.value = '';
   neuFehler.hidden = true;
   neuFeld.focus();
@@ -591,6 +673,8 @@ function sitzungSpeichern(d) {
     access_token: d.access_token,
     refresh_token: d.refresh_token,
     monteur: m.monteur || gewaehlt,
+    name: m.name || nameVon(m.monteur || gewaehlt),
+    rolle: m.rolle || 'monteur',
     /* Nur fuer die Maske. Die Bedingung selbst haengt NICHT hieran — der
        Server gibt die Liste nicht heraus, solange das Startpasswort steht.
        Ein Merkmal im Browser, das ueber eine Sperre entscheidet, ist keine
@@ -707,7 +791,7 @@ function angemeldetZeigen() {
   const s = sitzung();
   if (!s) { ziel.textContent = 'nicht angemeldet'; return; }
   const seit = new Date(s.seit);
-  ziel.textContent = 'Monteur ' + (s.monteur || '?') + ' – seit '
+  ziel.textContent = (s.name || nameVon(s.monteur)) + ' – seit '
     + seit.toLocaleDateString('de-DE') + ', '
     + seit.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
 }
@@ -1041,6 +1125,12 @@ function zuDetail(s, adr) {
   detailEl.classList.add('auf');
   detailEl.scrollTop = 0;
   document.getElementById('zurueck').onclick = () => zurueckGehen();
+
+  /* Ein Haken fuer die Netz-Fassung: dort darf Admin 1 Eintraege bearbeiten,
+     und der Knopf dafuer gehoert hierhin. Die oertliche Fassung setzt ihn
+     nicht — sie kann nichts speichern, und ein Knopf, der nichts tut, waere
+     schlimmer als keiner. */
+  if (typeof window.__detailErweitern === 'function') window.__detailErweitern(s, adr);
 }
 
 /* Ein Weg zurueck, egal womit ausgeloest: Knopf, Wisch oder Zurueck-Taste.
@@ -1109,6 +1199,8 @@ async function starten() {
       + 'einmal neu laden genuegt meist.', true);
     return;
   }
+  await aenderungenHolen();
+  const wieviele = aenderungenAnwenden();
   const t0 = performance.now();
   INDEX = new Index(DATEN);
   const bau = Math.round(performance.now() - t0);
@@ -1118,6 +1210,7 @@ async function starten() {
     adr.toLocaleString('de-DE') + ' durchsuchbare Adresszeilen<br>' +
     DATEN.filter(r => r.general).length + ' Generalschlüssel<br>' +
     'Stand der Liste: ' + STAND + '<br>' +
+    (wieviele ? wieviele.toLocaleString('de-DE') + ' Einträge nachträglich geändert<br>' : '') +
     '<span style="color:var(--leise)">Suchindex in ' + bau + ' ms gebaut</span>';
   zeigen();
   window.__bereit = true;
@@ -1136,7 +1229,7 @@ async function starten() {
    zuverlaessig. Hilft auch das nicht, kommt eine Leiste statt einer
    Endlosschleife: zweimal dasselbe zu versuchen und auf ein anderes Ergebnis
    zu hoffen, waere keine Loesung. */
-const FASSUNG = '20260918-e7a4e0e6';
+const FASSUNG = '20260918-e6405ea8';
 
 function neueFassungZeigen(neu) {
   if (document.getElementById('fassung-leiste')) return;
@@ -1184,6 +1277,143 @@ async function fassungPruefen() {
   try { sessionStorage.setItem(S_VERSUCH, neu); } catch (e) {}
   location.replace(location.pathname + '?v=' + encodeURIComponent(neu));
 }
+
+/* ---------- Bearbeiten (nur Admin 1) ----------
+   🔴 Die Aenderungen liegen NEBEN dem eingelesenen Bestand, nicht darin. Das
+      PDF wird irgendwann neu eingelesen — die Liste lebt ja. Jede Korrektur,
+      die in die Bestandsdatei geschrieben worden waere, waere dann weg.
+   🔴 Und die Rechte haengen nicht an dieser Maske: der Server weist jeden ab,
+      der nicht die Rolle "admin" hat. Der Knopf hier entscheidet nur, wem man
+      die Arbeit zumutet, nicht wer darf. */
+const BEARB_FELDER = ['status', 'anzahl', 'ansprechpartner', 'telefon', 'bemerkungen'];
+const STATUS_TEXT = {
+  vollstaendig: 'Datensatz vollständig', ohne_schluessel: 'Ohne Schlüssel',
+  in_beschaffung: 'In Beschaffung', passt_nicht: 'Passt nicht',
+  passt_teilweise: 'Passt teilweise', unklar: 'Unklar',
+};
+let AENDERUNGEN = {};
+let bearbSatz = null;
+
+function istAdmin() { const s = sitzung(); return !!s && s.rolle === 'admin'; }
+
+async function aenderungenHolen() {
+  const schein = await scheinHolen();
+  if (!schein) return;
+  try {
+    const r = await fetch(SB_URL + '/functions/v1/aenderungen', {
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + schein },
+    });
+    if (!r.ok) return;                     // keine Aenderungen ist kein Fehler
+    AENDERUNGEN = await r.json() || {};
+  } catch (e) { /* ohne Aenderungen laeuft die App weiter */ }
+}
+
+/* Legt die Aenderungen ueber den Bestand. Muss VOR dem Bau des Suchindex
+   laufen, sonst sucht man im alten Ansprechpartner und findet den neuen nicht. */
+function aenderungenAnwenden() {
+  let n = 0;
+  for (const satz of DATEN) {
+    const a = AENDERUNGEN[satz.nr];
+    if (!a) continue;
+    for (const f of BEARB_FELDER) if (f in a) satz[f] = a[f];
+    if ('status' in a) satz.status_text = STATUS_TEXT[a.status] || a.status;
+    satz._geaendert = { wer: a._wer, wann: a._wann };
+    n++;
+  }
+  return n;
+}
+
+const bearbEl = document.getElementById('bearbeiten');
+
+window.__detailErweitern = function (s) {
+  const kopf = document.querySelector('#detail .d-kopf');
+  if (!kopf) return;
+  if (s._geaendert) {
+    const p = document.createElement('span');
+    p.className = 'geaendert';
+    p.textContent = 'geändert';
+    p.title = s._geaendert.wer + ', ' + new Date(s._geaendert.wann).toLocaleString('de-DE');
+    kopf.appendChild(p);
+  }
+  if (!istAdmin()) return;
+  const b = document.createElement('button');
+  b.className = 'zurueck';
+  b.style.marginLeft = 'auto';
+  b.textContent = 'Bearbeiten';
+  b.onclick = () => bearbeitenOeffnen(s);
+  kopf.appendChild(b);
+};
+
+function bearbeitenOeffnen(s) {
+  bearbSatz = s;
+  document.getElementById('bearb-nr').textContent = s.nr;
+  document.getElementById('b-status').value = s.status || 'unklar';
+  document.getElementById('b-anzahl').value = (s.anzahl == null ? '' : s.anzahl);
+  document.getElementById('b-ansprechpartner').value = s.ansprechpartner || '';
+  document.getElementById('b-telefon').value = s.telefon || '';
+  document.getElementById('b-bemerkungen').value = s.bemerkungen || '';
+  document.getElementById('bearb-fehler').hidden = true;
+  bearbEl.classList.add('auf');
+  bearbEl.scrollTop = 0;
+}
+
+function bearbeitenSchliessen() {
+  bearbEl.classList.remove('auf');
+  bearbSatz = null;
+}
+
+async function bearbeitenSpeichern() {
+  if (!bearbSatz) return;
+  const fehlerEl = document.getElementById('bearb-fehler');
+  const sagen = (t) => { fehlerEl.textContent = t; fehlerEl.hidden = !t; };
+  const knopf = document.getElementById('bearb-speichern');
+
+  const werte = {
+    status: document.getElementById('b-status').value,
+    anzahl: document.getElementById('b-anzahl').value,
+    ansprechpartner: document.getElementById('b-ansprechpartner').value.trim(),
+    telefon: document.getElementById('b-telefon').value.trim(),
+    bemerkungen: document.getElementById('b-bemerkungen').value.trim(),
+  };
+  sagen('');
+  knopf.disabled = true;
+  knopf.textContent = 'Wird gespeichert …';
+  try {
+    const schein = await scheinHolen();
+    if (!schein) { sagen('Anmeldung abgelaufen. Bitte neu anmelden.'); return; }
+    const r = await fetch(SB_URL + '/functions/v1/aenderungen', {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + schein,
+                 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nr: bearbSatz.nr, werte }),
+    });
+    if (!r.ok) {
+      let grund = 'Fehlgeschlagen (' + r.status + ').';
+      try { grund = (await r.json()).fehler || grund; } catch (_) {}
+      sagen(grund);
+      return;
+    }
+    const antwort = await r.json();
+    AENDERUNGEN[bearbSatz.nr] = antwort.eintrag;
+    /* Der Suchindex enthaelt Ansprechpartner und Bemerkungen. Wird er nicht
+       neu gebaut, findet die Suche weiter den alten Text — und das faellt
+       niemandem auf, weil die Karte ja richtig aussieht. */
+    aenderungenAnwenden();
+    INDEX = new Index(DATEN);
+    const gemerkt = bearbSatz;
+    bearbeitenSchliessen();
+    zeigen();
+    zuDetail(gemerkt);
+  } catch (e) {
+    sagen('Keine Verbindung. Netz prüfen und noch einmal.');
+  } finally {
+    knopf.disabled = false;
+    knopf.textContent = 'Speichern';
+  }
+}
+
+document.getElementById('bearb-ab').onclick = bearbeitenSchliessen;
+document.getElementById('bearb-speichern').onclick = bearbeitenSpeichern;
 
 setTimeout(() => { leisteMessen(); starten(); fassungPruefen(); }, 30);
 document.addEventListener('visibilitychange', () => {
