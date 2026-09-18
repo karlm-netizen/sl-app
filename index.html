@@ -360,7 +360,7 @@ nav svg { width: 24px; height: 24px; }
   </button>
 </nav>
 
-<script src="suche.js"></script>
+<script src="suche.js?v=20260918-4caa2a74"></script>
 <script>
 // ---------- Anmeldung (Supabase) ----------
 /* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
@@ -932,7 +932,52 @@ async function starten() {
   window.__bereit = true;
 }
 
-setTimeout(() => { leisteMessen(); starten(); }, 30);
+/* ---------- Ist das hier noch die neueste Fassung? ----------
+   🔴 Das Problem, das dahinter steckt: GitHub liefert die Seite zehn Minuten
+      lang aus dem Zwischenspeicher aus, Safari auf dem Startbildschirm oft
+      noch laenger. Wer gerade etwas gebaut hat, sieht es nicht — und haelt
+      den alten Stand fuer den neuen. Genau dann sucht man den Fehler an der
+      falschen Stelle.
+
+   `fassung.txt` wird bei jedem Bau neu geschrieben und ausdruecklich OHNE
+   Zwischenspeicher geholt. Weicht sie ab, laedt sich die Seite einmal selbst
+   neu — mit der Fassung in der Adresse, denn nur das umgeht den Speicher
+   zuverlaessig. Hilft auch das nicht, kommt eine Leiste statt einer
+   Endlosschleife: zweimal dasselbe zu versuchen und auf ein anderes Ergebnis
+   zu hoffen, waere keine Loesung. */
+const FASSUNG = '20260918-4caa2a74';
+
+function neueFassungZeigen(neu) {
+  if (document.getElementById('fassung-leiste')) return;
+  const l = document.createElement('div');
+  l.id = 'fassung-leiste';
+  l.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99;padding:10px 14px;'
+    + 'background:var(--akzent);color:#fff;font-size:14px;font-weight:600;'
+    + 'display:flex;gap:10px;align-items:center;justify-content:space-between';
+  l.innerHTML = '<span>Neue Fassung verfügbar (' + neu + ')</span>'
+    + '<button style="all:unset;cursor:pointer;text-decoration:underline">Jetzt laden</button>';
+  l.querySelector('button').onclick = () => location.reload();
+  document.body.appendChild(l);
+}
+
+async function fassungPruefen() {
+  let neu = '';
+  try {
+    const r = await fetch('fassung.txt?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    neu = (await r.text()).trim();
+  } catch (e) { return; }
+  if (!neu || neu === FASSUNG) return;
+
+  // Schon einmal mit genau dieser Fassung umgeleitet? Dann nicht noch einmal.
+  if (new URLSearchParams(location.search).get('v') === neu) return neueFassungZeigen(neu);
+  location.replace(location.pathname + '?v=' + encodeURIComponent(neu));
+}
+
+setTimeout(() => { leisteMessen(); starten(); fassungPruefen(); }, 30);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) fassungPruefen();
+});
 
 // Für die automatische Prüfung (cloud-probe.py).
 window.__test = (q, n) => (INDEX ? INDEX.suche(q).slice(0, n || 8).map(t => ({
