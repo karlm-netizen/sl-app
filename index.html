@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Schlüsselliste</title>
+<!-- Das Icon: Browser-Tab und, wenn jemand die Seite aufs Handy legt,
+     auch das Symbol auf dem Startbildschirm. In der Einzeldatei wird es
+     eingebettet (siehe werkzeuge/einzeldatei-bauen.py). -->
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="theme-color" content="#0e1116">
+<style>
+:root {
+  --bg:        #f4f5f7;
+  --karte:     #ffffff;
+  --text:      #16181d;
+  --leise:     #6b7280;
+  --linie:     #e3e5e9;
+  --akzent:    #b45309;
+  --akzent-bg: #fef3e2;
+  --schatten:  0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.05);
+  --fehler-bg: #fdecec; --fehler-text: #a41414; --fehler-rand: #f3c6c6;
+
+  --gruen: #22a34c; --schwarz: #3f4650; --gelb: #e0b400;
+  --rot:   #ed1c24; --orange: #ffc20e;  --blau:  #0072bc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-thema="hell"]) {
+    --bg: #101216; --karte: #191c22; --text: #f0f2f5; --leise: #9aa2b1;
+    --linie: #272b33; --akzent: #f0a24a; --akzent-bg: #33250f;
+    --schatten: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+    --fehler-bg: #3a1a1a; --fehler-text: #ff9c9c; --fehler-rand: #5d2626;
+  }
+}
+:root[data-thema="dunkel"] {
+  --bg: #101216; --karte: #191c22; --text: #f0f2f5; --leise: #9aa2b1;
+  --linie: #272b33; --akzent: #f0a24a; --akzent-bg: #33250f;
+  --schatten: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+  --fehler-bg: #3a1a1a; --fehler-text: #ff9c9c; --fehler-rand: #5d2626;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+/* Höhe der unteren Leiste. Der Startwert ist nur eine Schätzung — beim Laden
+   wird die Leiste gemessen und der Wert überschrieben. Eine feste Zahl geht
+   schief, sobald sich Schriftgröße oder Zeilenumbruch ändern, und am PC war
+   sie zu knapp: die letzte Trefferkarte lag halb unter der Leiste. */
+:root { --leiste: 62px; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding-bottom: calc(var(--leiste) + 20px + env(safe-area-inset-bottom));
+  overscroll-behavior-y: none;
+}
+
+/* ---------- Kopf + Suchfeld ---------- */
+.kopf {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg);
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--linie);
+}
+.kopf h1 { margin: 0 0 10px; font-size: 20px; letter-spacing: -.02em; }
+.suchzeile { position: relative; }
+#suchfeld {
+  width: 100%; padding: 15px 44px 15px 46px;
+  font-size: 17px; color: var(--text);
+  background: var(--karte); border: 2px solid var(--linie);
+  border-radius: 14px; outline: none;
+}
+#suchfeld:focus { border-color: var(--akzent); }
+.lupe, .leeren {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  color: var(--leise); display: flex;
+}
+.lupe { left: 15px; pointer-events: none; }
+.leeren {
+  right: 8px; border: 0; background: none; cursor: pointer;
+  padding: 8px; border-radius: 50%; font-size: 20px; line-height: 1;
+}
+.zaehler { margin-top: 8px; font-size: 13px; color: var(--leise); min-height: 18px; }
+
+/* ---------- Karten ---------- */
+main { padding: 12px 16px 24px; max-width: 760px; margin: 0 auto; }
+.satz {
+  background: var(--karte); border: 1px solid var(--linie);
+  border-radius: 14px; padding: 14px 14px 12px; margin-bottom: 10px;
+  box-shadow: var(--schatten); cursor: pointer;
+  display: grid; grid-template-columns: 6px 1fr; gap: 0 12px;
+  overflow: hidden;
+}
+.streifen { grid-row: 1 / -1; border-radius: 3px; background: var(--leise); margin: -14px 0 -12px -14px; width: 6px; }
+/* ℹ️ VORSORGE, kein behobener Fehler — damit hier niemand etwas Falsches liest.
+   Ein Rasterfeld ist per Vorgabe mindestens so breit wie sein längster Inhalt,
+   und ein langes Wort ohne Leerzeichen (Firmenname, Straße) könnte die Karte
+   aufblähen. Mit dem heutigen Datenbestand passiert das NICHT: die Gegenprobe
+   hat beide Zeilen entfernt, und bei 390 px ragte trotzdem nichts heraus.
+   Sie bleiben stehen, weil die Liste sich ändert, nicht weil sie etwas retten. */
+.satz > div { min-width: 0; }
+.satz h2, .reihe, .versorgt, .bem { overflow-wrap: anywhere; }
+.s-vollstaendig    { background: var(--gruen); }
+.s-ohne_schluessel { background: var(--schwarz); }
+.s-in_beschaffung  { background: var(--gelb); }
+.s-passt_nicht     { background: var(--rot); }
+.s-passt_teilweise { background: var(--orange); }
+.s-unklar          { background: var(--blau); }
+
+.satz h2 { margin: 0 0 6px; font-size: 17px; line-height: 1.25; letter-spacing: -.01em; }
+.reihe { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--leise); }
+.reihe b { color: var(--text); font-weight: 600; }
+.nr {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text);
+}
+.general {
+  background: var(--akzent-bg); color: var(--akzent);
+  border-radius: 6px; padding: 1px 6px; font-size: 12px; font-weight: 700;
+  letter-spacing: .03em;
+}
+.versorgt {
+  margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--linie);
+  font-size: 14px; color: var(--leise);
+}
+.versorgt b { color: var(--text); font-weight: 600; }
+.bem { margin-top: 6px; font-size: 14px; color: var(--leise); }
+mark { background: var(--akzent-bg); color: inherit; border-radius: 3px; padding: 0 2px; }
+
+/* ---------- Detail ---------- */
+#detail {
+  position: fixed; inset: 0; z-index: 40; background: var(--bg);
+  overflow-y: auto; display: none;
+  /* 🔴 Die Leiste liegt ÜBER der Detailansicht (z-index 50 gegen 40). Ohne
+     diesen Abstand verschwindet das letzte Feld darunter — am PC war genau
+     das der Fall, dort fehlte der Platz unten. */
+  padding: 0 0 calc(var(--leiste) + 24px + env(safe-area-inset-bottom));
+}
+#detail.auf { display: block; }
+.d-kopf {
+  position: sticky; top: 0; background: var(--karte);
+  border-bottom: 1px solid var(--linie); padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.zurueck {
+  border: 0; background: none; color: var(--akzent); font-size: 16px;
+  font-weight: 600; cursor: pointer; padding: 6px 4px;
+}
+.d-inhalt { padding: 16px; max-width: 760px; margin: 0 auto; }
+.feld {
+  background: var(--karte); border: 1px solid var(--linie);
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+}
+.feld .titel {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--leise); margin-bottom: 4px; font-weight: 600;
+}
+/* 🔴 Ohne das schiebt EIN langes Wort die ganze Tafel auf. Im heutigen
+   Bestand geht es gerade noch gut (der laengste zusammenhaengende Text hat
+   40 Zeichen und passt bei 390 px), aber Datensaetze sollen spaeter in der
+   App angelegt werden koennen — dann tippt jemand eine laengere Zeile, und
+   ab da liegt der rechte Rand ausserhalb des Bildschirms.
+   ⚠️ Anders als bei der Trefferkarte ist das hier KEINE Vorsorge auf
+      Verdacht: es gibt eine Pruefung mit einem ueberlangen Wert, und sie
+      wird ohne diese Zeile rot. */
+.feld .wert { font-size: 16px; overflow-wrap: anywhere; }
+.d-inhalt h2 { overflow-wrap: anywhere; }
+.knopf {
+  display: block; width: 100%; text-align: center; text-decoration: none;
+  background: var(--akzent); color: #fff; font-size: 17px; font-weight: 600;
+  padding: 15px; border-radius: 13px; margin-bottom: 10px; border: 0; cursor: pointer;
+}
+.knopf.zweit { background: var(--karte); color: var(--text); border: 1px solid var(--linie); }
+.pille {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: #fff;
+}
+
+/* ---------- Anmeldung ---------- */
+/* Liegt ÜBER allem, auch über der Leiste (z-index 60 gegen 50) — solange
+   niemand angemeldet ist, soll auch kein Reiter erreichbar sein. */
+#anmeldung {
+  position: fixed; inset: 0; z-index: 60; background: var(--bg);
+  overflow-y: auto; display: none;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+#anmeldung.auf { display: block; }
+#anmeldung main { padding: 28px 16px 24px; max-width: 460px; }
+#anm-unter { margin: 0 0 20px; color: var(--leise); }
+#anmeldung .wahl { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+#anmeldung .wahl button { padding: 16px 12px; font-size: 16px; }
+#pin-feld {
+  width: 100%; padding: 13px 14px; font-size: 20px; letter-spacing: .2em;
+  color: var(--text); background: var(--bg);
+  border: 2px solid var(--linie); border-radius: 10px; outline: none;
+}
+#pin-feld:focus { border-color: var(--akzent); }
+/* Der weite Zeichenabstand ist fuer die PIN gedacht, nicht fuer den
+   Platzhalter -- dort sieht er nur nach einem Fehler aus. */
+#pin-feld::placeholder { letter-spacing: normal; font-size: 16px; }
+.fehler {
+  background: var(--fehler-bg); color: var(--fehler-text);
+  border: 1px solid var(--fehler-rand);
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px;
+}
+.zustimmung {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--karte); border: 1px solid var(--linie);
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 12px;
+  font-size: 14px; color: var(--leise); line-height: 1.4; cursor: pointer;
+}
+.zustimmung b { color: var(--text); }
+.zustimmung input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 auto; }
+/* ⚠️ Was die PIN leistet und was nicht — steht in der App, nicht nur in der
+   README. Ein Schloss, das aussieht wie Schutz, ist gefährlicher als keins. */
+.ehrlich { font-size: 13px; color: var(--leise); line-height: 1.45; }
+
+/* ---------- Navigation ---------- */
+nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  background: var(--karte); border-top: 1px solid var(--linie);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+nav button {
+  border: 0; background: none; cursor: pointer; color: var(--leise);
+  padding: 9px 0 8px; font-size: 11px; font-weight: 600;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+nav button.aktiv { color: var(--akzent); }
+nav svg { width: 24px; height: 24px; }
+.hinweis {
+  background: var(--karte); border: 1px solid var(--linie);
+  border-radius: 14px; padding: 20px; text-align: center; color: var(--leise);
+}
+.hinweis h3 { margin: 0 0 8px; color: var(--text); font-size: 17px; }
+.hinweis ul { text-align: left; margin: 12px 0 0; padding-left: 20px; }
+.hinweis li { margin-bottom: 6px; }
+.wahl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.wahl button {
+  padding: 12px; border-radius: 10px; border: 2px solid var(--linie);
+  background: var(--bg); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.wahl button.aktiv { border-color: var(--akzent); color: var(--akzent); }
+.laden { text-align: center; padding: 60px 20px; color: var(--leise); }
+</style>
+</head>
+<body>
+
+<div id="seite-suche">
+  <div class="kopf">
+    <h1>Schlüsselliste</h1>
+    <div class="suchzeile">
+      <span class="lupe"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+      <input id="suchfeld" type="search" enterkeyhint="search" autocomplete="off"
+             autocorrect="off" spellcheck="false" placeholder="Adresse, Schlüsselnummer, Name …">
+      <button class="leeren" id="leeren" hidden aria-label="Leeren">×</button>
+    </div>
+    <div class="zaehler" id="zaehler"></div>
+  </div>
+  <main id="ergebnis"><div class="laden">Liste wird geladen …</div></main>
+</div>
+
+<div id="seite-einst" hidden>
+  <div class="kopf"><h1>Einstellungen</h1></div>
+  <main>
+    <div class="feld">
+      <div class="titel">Darstellung</div>
+      <div class="wahl" id="thema-wahl">
+        <button data-thema="system">System</button>
+        <button data-thema="hell">Hell</button>
+        <button data-thema="dunkel">Dunkel</button>
+      </div>
+    </div>
+    <div class="feld">
+      <div class="titel">Angemeldet</div>
+      <div class="wert" id="angemeldet">–</div>
+    </div>
+    <button class="knopf zweit" id="abmelden">Abmelden</button>
+    <div class="feld">
+      <div class="titel">Was die PIN leistet</div>
+      <div class="ehrlich">
+        Sie hält jemanden ab, der das entsperrte Gerät kurz in die Hand nimmt.
+        <b>Sie schützt die Daten nicht</b> – die liegen unverschlüsselt in
+        derselben Datei, und wer sie im Texteditor öffnet, liest alles, ohne je
+        eine PIN gesehen zu haben. Echter Schutz kommt erst mit dem Backend:
+        dort liegt die Liste nicht auf dem Gerät, und die Anmeldung entscheidet,
+        was überhaupt ausgeliefert wird.
+      </div>
+    </div>
+    <div class="feld">
+      <div class="titel">Datenbestand</div>
+      <div class="wert" id="bestand">–</div>
+    </div>
+    <div class="hinweis" style="text-align:left">
+      <h3>Was dieser Prototyp noch nicht kann</h3>
+      <ul>
+        <li><b>Bearbeiten und Hinzufügen</b> – braucht das Backend, denn
+            Änderungen sollen ja nur online möglich sein</li>
+        <li><b>Abgleich zwischen mehreren Monteuren</b> – braucht das Backend</li>
+        <li><b>Anmeldung gilt nur auf diesem Gerät</b> – PIN und Zustimmung
+            liegen lokal, sie wandern nicht mit</li>
+      </ul>
+      <p style="margin-bottom:0">Gebaut ist der Teil, der ohne all das auskommt:
+         die Suche über den echten, vollständigen Bestand.</p>
+    </div>
+  </main>
+</div>
+
+<div id="anmeldung" hidden>
+  <main>
+    <h1 style="margin:8px 0 4px;font-size:22px">Schlüsselliste</h1>
+    <p id="anm-unter">Bitte anmelden</p>
+
+    <div id="anm-form">
+      <div class="feld">
+        <div class="titel">E-Mail</div>
+        <input id="anm-mail" type="email" inputmode="email" autocomplete="username"
+               autocapitalize="off" autocorrect="off" placeholder="name@beispiel.de">
+      </div>
+      <div class="feld">
+        <div class="titel">Passwort</div>
+        <input id="anm-pw" type="password" autocomplete="current-password"
+               placeholder="Passwort">
+      </div>
+      <div id="anm-fehler" class="fehler" hidden></div>
+      <button class="knopf" id="anm-los">Anmelden</button>
+      <p style="font-size:13px;color:var(--leise);margin-top:14px">
+        Zugänge werden vergeben, nicht selbst angelegt. Wer keinen hat,
+        bekommt keinen Einblick in die Liste.</p>
+    </div>
+  </main>
+</div>
+
+<div id="detail"></div>
+
+<nav>
+  <button data-seite="suche" class="aktiv">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    Suche
+  </button>
+  <button data-seite="einst">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.6 1.6 0 008 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H2a2 2 0 110-4h.1A1.6 1.6 0 003.6 8a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H8a1.6 1.6 0 001-1.5V2a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V8a1.6 1.6 0 001.5 1H22a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></svg>
+    Einstellungen
+  </button>
+</nav>
+
+<script src="suche.js"></script>
+<script>
+// ---------- Anmeldung (Supabase) ----------
+/* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
+   eine 100-KB-Abhaengigkeit von einem fremden Server waere hier der groessere
+   Preis — sie muesste bei jedem Start geladen werden und koennte sich aendern,
+   ohne dass wir es merken.
+
+   🔴 Was hier anders ist als in der oertlichen Fassung: die Daten liegen NICHT
+      in der Seite. Ohne gueltige Anmeldung liefert der Server nichts aus —
+      auch wenn jemand den Quelltext liest, den Schluessel kopiert und die
+      Adresse kennt. Genau deshalb gibt es diese Fassung. */
+const SB_URL = 'https://kaddgezgxupaqmkmxwld.supabase.co';
+const SB_KEY = 'sb_publishable_bQ4Q5VnrTiJYrclr5EIM_Q_Xi_CAbX6';
+const S_SITZUNG = 'sl.sitzung';
+
+function lade(schluessel, standard) {
+  try {
+    const roh = localStorage.getItem(schluessel);
+    return roh ? JSON.parse(roh) : standard;
+  } catch (e) { return standard; }
+}
+function sichere(schluessel, wert) {
+  try { localStorage.setItem(schluessel, JSON.stringify(wert)); } catch (e) {}
+}
+
+const anmEl     = document.getElementById('anmeldung');
+const mailFeld  = document.getElementById('anm-mail');
+const pwFeld    = document.getElementById('anm-pw');
+const anmFehler = document.getElementById('anm-fehler');
+
+function fehlerZeigen(text) {
+  anmFehler.textContent = text;
+  anmFehler.hidden = !text;
+}
+
+function sitzung() { return lade(S_SITZUNG, null); }
+
+/* Ein Zugangsschein gilt eine Stunde. Wir erneuern ihn eine Minute vor Ablauf
+   — nicht erst, wenn ein Abruf scheitert: ein Fehlschlag mitten im Laden sieht
+   fuer den Benutzer aus wie eine leere Liste, und das ist die Bauform, die uns
+   hier schon zweimal Zeit gekostet hat. */
+async function scheinHolen() {
+  const s = sitzung();
+  if (!s) return null;
+  if (s.ablauf && Date.now() < s.ablauf - 60000) return s.access_token;
+
+  const r = await fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token', {
+    method: 'POST',
+    headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: s.refresh_token }),
+  });
+  if (!r.ok) { abmelden(); return null; }
+  const d = await r.json();
+  sitzungSpeichern(d);
+  return d.access_token;
+}
+
+function sitzungSpeichern(d) {
+  sichere(S_SITZUNG, {
+    access_token: d.access_token,
+    refresh_token: d.refresh_token,
+    mail: d.user && d.user.email,
+    ablauf: Date.now() + (d.expires_in || 3600) * 1000,
+    seit: new Date().toISOString(),
+  });
+}
+
+async function anmeldenVersuch() {
+  const mail = (mailFeld.value || '').trim();
+  const pw = pwFeld.value || '';
+  if (!mail || !pw) return fehlerZeigen('E-Mail und Passwort eingeben.');
+  fehlerZeigen('');
+
+  let r;
+  try {
+    r = await fetch(SB_URL + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: mail, password: pw }),
+    });
+  } catch (e) {
+    /* 🔴 Kein Netz ist etwas anderes als "Passwort falsch". Wer das in einen
+       Topf wirft, schickt jemanden sein richtiges Passwort dreimal neu
+       eintippen, waehrend das Funkloch schuld ist. */
+    return fehlerZeigen('Keine Verbindung. Netz pruefen und noch einmal.');
+  }
+  if (!r.ok) {
+    return fehlerZeigen(r.status === 400
+      ? 'E-Mail oder Passwort stimmt nicht.'
+      : 'Anmeldung abgelehnt (' + r.status + ').');
+  }
+  sitzungSpeichern(await r.json());
+  pwFeld.value = '';
+  await starten();
+}
+
+function abmelden() {
+  try { localStorage.removeItem(S_SITZUNG); } catch (e) {}
+  DATEN = null; INDEX = null;
+  anmeldungPruefen();
+}
+
+/* Der einzige Ort, der entscheidet, ob die Anmeldung zu sehen ist. */
+function anmeldungPruefen() {
+  const offen = !sitzung();
+  anmEl.hidden = !offen;
+  anmEl.classList.toggle('auf', offen);
+  document.querySelector('nav').style.display = offen ? 'none' : '';
+  angemeldetZeigen();
+  return !offen;
+}
+
+function angemeldetZeigen() {
+  const ziel = document.getElementById('angemeldet');
+  if (!ziel) return;
+  const s = sitzung();
+  if (!s) { ziel.textContent = 'nicht angemeldet'; return; }
+  const seit = new Date(s.seit);
+  ziel.textContent = (s.mail || 'angemeldet') + ' – seit '
+    + seit.toLocaleDateString('de-DE') + ', '
+    + seit.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+}
+
+document.getElementById('anm-los').onclick = anmeldenVersuch;
+document.getElementById('abmelden').onclick = abmelden;
+pwFeld.addEventListener('keydown', e => { if (e.key === 'Enter') anmeldenVersuch(); });
+[mailFeld, pwFeld].forEach(f => f.addEventListener('input', () => fehlerZeigen('')));
+
+// ---------- Thema ----------
+const themaWahl = document.getElementById('thema-wahl');
+function setzeThema(t) {
+  if (t === 'system') document.documentElement.removeAttribute('data-thema');
+  else document.documentElement.setAttribute('data-thema', t);
+  try { localStorage.setItem('thema', t); } catch (e) {}
+  [...themaWahl.children].forEach(b => b.classList.toggle('aktiv', b.dataset.thema === t));
+}
+themaWahl.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (b) setzeThema(b.dataset.thema);
+});
+let gemerkt = 'system';
+try { gemerkt = localStorage.getItem('thema') || 'system'; } catch (e) {}
+setzeThema(gemerkt);
+
+// ---------- Navigation ----------
+const seiten = { suche: 'seite-suche', karte: 'seite-karte', einst: 'seite-einst' };
+document.querySelector('nav').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('aktiv', x === b));
+  for (const [k, id] of Object.entries(seiten)) document.getElementById(id).hidden = (k !== b.dataset.seite);
+  zuDetail(null);
+});
+
+// ---------- Index ----------
+const STATUS_FARBE = {
+  vollstaendig: 'var(--gruen)', ohne_schluessel: 'var(--schwarz)',
+  in_beschaffung: 'var(--gelb)', passt_nicht: 'var(--rot)',
+  passt_teilweise: 'var(--orange)', unklar: 'var(--blau)',
+};
+let INDEX = null;
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/* ------------------------------------------------------------------------
+   Telefonnummern zerlegen.
+
+   In der Liste steht oft mehr als eine Nummer in einem Feld, und die
+   Schreibweisen sind uneinheitlich. Gemessen über alle 5.971 gefüllten
+   Felder: 788 enthalten einen Trenner, 745-mal " / ", dazu "o.", "od.",
+   "oder", "u.", "und".
+
+   ⚠️ Drei Fallen, an denen ein naiver split scheitert:
+     · "0172/4043070"  — der Schrägstrich steckt MITTEN in einer Nummer.
+       Getrennt wird deshalb nur an " / " MIT Leerzeichen.
+     · "0431 906977 oder 906941" — die zweite Nummer hat keine Vorwahl.
+       Sie erbt die der ersten, sonst wählt der Knopf ins Leere.
+     · "0431 803023 (priv.) - 9808633" — an " - " wird NICHT getrennt,
+       weil "0800 - 70 70 780" den Bindestrich innerhalb einer Nummer hat.
+       Lieber einmal zu wenig trennen als eine kaputte Nummer anbieten.
+   ------------------------------------------------------------------------ */
+const TRENNER = /\s+\/\s+|\s+(?:o\.|od\.|oder|u\.|und)\s+|;/i;
+const MAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+
+function telefonnummern(roh) {
+  const s = (roh || '').replace(/\s+/g, ' ').trim();
+  if (!s) return [];
+  const out = [];
+  let vorwahl = '';
+  for (let teil of s.split(TRENNER)) {
+    teil = teil.trim().replace(/^[-–,.\s]+|[-–,\s]+$/g, '');
+    if (!teil) continue;
+
+    const mail = teil.match(MAIL);
+    if (mail) { out.push({ art: 'mail', text: mail[0], ziel: mail[0] }); continue; }
+
+    const ziffern = teil.replace(/[^\d+]/g, '');
+    if (ziffern.length < 4) continue;          // "5" o. Ä. ist keine Nummer
+
+    // Vorwahl der ersten Nummer merken — nachfolgende Bruchstücke erben sie.
+    const v = teil.match(/^(0\d{2,4})[\s\-\/]/);
+    if (v && !vorwahl) vorwahl = v[1];
+
+    const eigen = /^[0+]/.test(ziffern);
+    const ziel = eigen ? ziffern : (vorwahl + ziffern);
+    const text = eigen ? teil : (vorwahl ? vorwahl + ' ' + teil : teil);
+
+    /* 🔴 In der Liste stehen unvollstaendige Felder: mal nur "0431", mal
+       "0431 6499345 / 0175" — eine Vorwahl ohne Anschluss. Daraus darf kein
+       Waehlknopf werden, der ins Leere ruft. Sieben Ziffern ist die Grenze:
+       die kuerzeste echte Nummer im Bestand ("04394 535") hat acht. */
+    if (ziel.replace(/\D/g, '').length < 7) continue;
+    if (!out.some(x => x.ziel === ziel)) out.push({ art: 'tel', text, ziel });
+  }
+  return out;
+}
+
+/* Eine Adresse, nicht mehrere. `adr` ist die eine, für die diese Karte steht —
+   damit Google Maps ein Ziel bekommt statt einer Aufzählung.
+
+   ⚠️ Die Adresse bringt ihre EIGENE Straße mit. Vorher wurde hier `s.strasse`
+      genommen und nur die Hausnummer durchgereicht; bei einem Datensatz mit
+      zwei Straßen stand dann "Lüdemannstr. 30" auf der Karte. */
+function adresseText(s, adr) {
+  const a = adr || {
+    strasse: s.strasse, hausnummer: (s.hausnummern || []).join(', '),
+    zusatz: s.zusatz, ort: s.ort,
+  };
+  return [a.strasse, a.hausnummer].filter(Boolean).join(' ')
+    + (a.zusatz ? ' ' + a.zusatz : '') + (a.ort ? ', ' + a.ort : '');
+}
+
+/* 🔴 Google Maps kennt keine Bereiche. Nach "Hof Hammer 1-43" sucht es ins
+   Leere, nach "Hof Hammer 1" findet es die Stelle — und der Monteur steht am
+   Anfang der Reihe statt nirgendwo.
+
+   Karls Ansage vom 17.09.2026: „auf google maps suchst du dann einfach nach
+   der niedrigsten hausnummer … da sind dann aber halt 14 häuser enthalten."
+   Angezeigt wird weiter der ganze Bereich — nur das Suchziel wird gekürzt. */
+function ersteHausnummer(n) {
+  const m = /^(\d{1,4}[a-z]?)\s*-/i.exec(n || '');
+  return m ? m[1] : (n || '');
+}
+
+function mapsZiel(s, adr) {
+  const a = adr || {
+    strasse: s.strasse, hausnummer: (s.hausnummern || [])[0] || '',
+    zusatz: s.zusatz, ort: s.ort,
+  };
+  /* ⚠️ Ohne den Zusatz: "KIN NMS", "Herrenhaus" oder "NS2830" sind interne
+     Bezeichnungen, die Google Maps nur stören. Auf der Karte steht der
+     Zusatz weiter. */
+  return adresseText(s, { strasse: a.strasse, ort: a.ort, zusatz: '',
+                          hausnummer: ersteHausnummer(a.hausnummer) });
+}
+
+/* Alle Standorte eines Datensatzes für die Zeile "Derselbe Schlüssel gilt für".
+   Nach Straße gruppiert, damit acht Ostring-Häuser nicht acht Mal "Ostring"
+   schreiben — und zwei Straßen trotzdem getrennt bleiben. */
+function alleStandorte(s) {
+  const gruppen = [];
+  for (const a of (s.adressen || []).filter(x => x.rolle === 'standort')) {
+    const letzte = gruppen[gruppen.length - 1];
+    if (letzte && letzte.strasse === a.strasse) letzte.nrn.push(a.hausnummer);
+    else gruppen.push({ strasse: a.strasse, nrn: [a.hausnummer] });
+  }
+  return gruppen
+    .map(g => [g.strasse, g.nrn.filter(Boolean).join(', ')].filter(Boolean).join(' '))
+    .join(' · ');
+}
+
+function karte(t, i) {
+  const s = t.satz;
+  const kl = 's-' + (s.status || 'unklar');
+  const versorgt = s.versorgt_roh
+    ? `<div class="versorgt"><b>Versorgt auch:</b> ${esc(s.versorgt_roh)}</div>` : '';
+  const bem = s.bemerkungen ? `<div class="bem">${esc(s.bemerkungen)}</div>` : '';
+  const passend = (s.passende_schluessel || []).length
+    ? `<div class="bem">Passende Schlüssel: ${esc(s.passende_schluessel.join(', '))}</div>` : '';
+  /* ⚠️ Die Karte merkt sich ihren PLATZ in der Trefferliste, nicht Nummer und
+     Hausnummer. Ein Datensatz mit zwei Straßen kann dieselbe Hausnummer
+     zweimal haben — dann führten beide Karten auf dieselbe Detailansicht. */
+  return `<article class="satz" data-nr="${esc(s.nr)}" data-seite="${s.seite}" data-i="${i}">
+    <div class="streifen ${kl}"></div>
+    <div>
+      <h2>${esc(adresseText(s, t.adresse))}</h2>
+      <div class="reihe">
+        <span class="nr">🔑 ${esc(s.nr)}${s.general ? '<span class="general">GENERAL</span>' : ''}</span>
+        <span>Anzahl <b>${s.anzahl == null ? '–' : s.anzahl}</b></span>
+        <span style="color:${STATUS_FARBE[s.status] || 'var(--leise)'};font-weight:600">${esc(s.status_text || 'unbekannt')}</span>
+      </div>
+      ${s.ansprechpartner ? `<div class="reihe" style="margin-top:6px"><span>👤 ${esc(s.ansprechpartner)}</span>${s.telefon ? `<span>📞 ${esc(s.telefon)}</span>` : ''}</div>` : ''}
+      ${versorgt}${bem}${passend}
+    </div>
+  </article>`;
+}
+
+const feldEl = document.getElementById('suchfeld');
+const ergEl = document.getElementById('ergebnis');
+/* Der Stand der Liste steht an ZWEI Stellen (Startbildschirm und
+   Einstellungen). Als Konstante, damit er beim Aktualisieren nicht an
+   einer davon stehen bleibt — dann wuerde die App zwei Staende nennen. */
+const STAND = '16.01.2025';
+const zaehlerEl = document.getElementById('zaehler');
+const leerenEl = document.getElementById('leeren');
+let letzte = [];
+
+function zeigen() {
+  const q = feldEl.value.trim();
+  leerenEl.hidden = q.length === 0;
+  if (!INDEX) return;
+  if (!q) {
+    letzte = [];
+    /* Der Stand der Liste gehört auf den Startbildschirm, nicht nur unter
+       Einstellungen: "Wie aktuell ist das?" ist die erste Frage, die jemand
+       stellt, der die App zum ersten Mal sieht — und wer sie nicht
+       beantwortet bekommt, traut der Auskunft nicht. */
+    zaehlerEl.textContent =
+      `${DATEN.length.toLocaleString('de-DE')} Schlüssel-Datensätze · Stand ${STAND}`;
+    ergEl.innerHTML = `<div class="hinweis"><h3>Wonach suchst du?</h3>
+      <p>Adresse, Schlüsselnummer, Ansprechpartner – Tippfehler sind in Ordnung.</p>
+      <p style="margin-bottom:0">Mitversorgte Adressen werden mitgesucht: wer
+      <b>Beispielstraße 25</b> eingibt, findet auch den Schlüssel, der unter
+      <b>Musterstraße 10</b> liegt.</p></div>`;
+    return;
+  }
+  const t0 = performance.now();
+  letzte = INDEX.adressTreffer(q);
+  const ms = Math.round(performance.now() - t0);
+  zaehlerEl.textContent = letzte.length
+    ? `${letzte.length} Treffer · ${ms} ms`
+    : `nichts gefunden · ${ms} ms`;
+  ergEl.innerHTML = letzte.length
+    ? letzte.map(karte).join('')
+    : `<div class="hinweis"><h3>Nichts gefunden</h3><p>Weniger eintippen hilft oft –
+       z. B. nur den Straßennamen ohne Hausnummer.</p></div>`;
+}
+
+let timer = null;
+feldEl.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(zeigen, 90); });
+leerenEl.addEventListener('click', () => { feldEl.value = ''; zeigen(); feldEl.focus(); });
+
+// ---------- Detail ----------
+const detailEl = document.getElementById('detail');
+function zuDetail(s, adr) {
+  if (!s) { detailEl.classList.remove('auf'); detailEl.innerHTML = ''; return; }
+  const ziel = encodeURIComponent(mapsZiel(s, adr));
+  const zeile = (t, v) => v ? `<div class="feld"><div class="titel">${t}</div><div class="wert">${esc(v)}</div></div>` : '';
+  detailEl.innerHTML = `
+    <div class="d-kopf">
+      <button class="zurueck" id="zurueck">‹ Zurück</button>
+      <b>${esc(s.nr)}</b>
+      ${s.general ? '<span class="general">GENERALSCHLÜSSEL</span>' : ''}
+    </div>
+    <div class="d-inhalt">
+      <h2 style="margin:4px 0 14px;font-size:22px">${esc(adresseText(s, adr))}</h2>
+      <span class="pille" style="background:${STATUS_FARBE[s.status] || 'var(--leise)'}">${esc(s.status_text || 'unbekannt')}</span>
+      <div style="height:14px"></div>
+      <a class="knopf" target="_blank" rel="noopener"
+         href="https://www.google.com/maps/search/?api=1&query=${ziel}">In Google Maps anzeigen</a>
+      ${telefonnummern(s.telefon).map(n => n.art === 'mail'
+          ? `<a class="knopf zweit" href="mailto:${esc(n.ziel)}">✉️ ${esc(n.text)}</a>`
+          : `<a class="knopf zweit" href="tel:${esc(n.ziel)}">📞 ${esc(n.text)}</a>`).join('')}
+      <div style="height:6px"></div>
+      ${zeile('Schlüsselnummer', s.nr)}
+      ${zeile('Anzahl vorhandener Schlüssel', s.anzahl == null ? '–' : String(s.anzahl))}
+      ${(s.adressen || []).filter(a => a.rolle === 'standort').length > 1
+        ? zeile('Derselbe Schlüssel gilt für', alleStandorte(s)) : ''}
+      ${zeile('Standort laut Liste', s.standort_roh)}
+      ${zeile('Versorgt auch', s.versorgt_roh)}
+      ${zeile('Ansprechpartner', s.ansprechpartner)}
+      ${zeile('Telefon', s.telefon)}
+      ${zeile('Bemerkungen', s.bemerkungen)}
+      ${zeile('Weitere passende Schlüssel', (s.passende_schluessel || []).join(', '))}
+      ${zeile('Fundstelle im PDF', 'Seite ' + s.seite)}
+    </div>`;
+  detailEl.classList.add('auf');
+  detailEl.scrollTop = 0;
+  document.getElementById('zurueck').onclick = () => zuDetail(null);
+}
+ergEl.addEventListener('click', e => {
+  const a = e.target.closest('.satz'); if (!a) return;
+  const t = letzte[+a.dataset.i];
+  if (t) zuDetail(t.satz, t.adresse);
+});
+
+// ---------- Höhe der unteren Leiste messen ----------
+// Statt einer festen Zahl: nachmessen und als CSS-Variable setzen. Die Leiste
+// wächst mit der Schriftgröße des Geräts, und darunter darf nichts liegen.
+function leisteMessen() {
+  const h = document.querySelector('nav').getBoundingClientRect().height;
+  if (h > 0) document.documentElement.style.setProperty('--leiste', Math.ceil(h) + 'px');
+}
+leisteMessen();
+window.addEventListener('resize', leisteMessen);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(leisteMessen);
+
+// ---------- Start ----------
+/* Reihenfolge, und sie ist Absicht: Anmeldung → Daten holen → Suchindex →
+   anzeigen. Die oertliche Fassung baut zuerst und fragt danach; hier geht das
+   nicht, denn ohne Anmeldung gibt es gar keine Daten. */
+let DATEN = null;
+
+async function datenHolen() {
+  const schein = await scheinHolen();
+  if (!schein) return false;
+  const r = await fetch(SB_URL + '/functions/v1/daten', {
+    headers: { apikey: SB_KEY, Authorization: 'Bearer ' + schein },
+  });
+  if (!r.ok) {
+    /* 🔴 Ein Fehlschlag darf nicht wie eine leere Liste aussehen. Genau das
+       ist in diesem Projekt schon dreimal passiert. */
+    throw new Error('Der Server hat mit ' + r.status + ' geantwortet.');
+  }
+  DATEN = await r.json();
+  if (!Array.isArray(DATEN) || !DATEN.length) throw new Error('Leere Liste empfangen.');
+  return true;
+}
+
+function ladeText(text, roh) {
+  const m = document.getElementById('ergebnis');
+  if (m) m.innerHTML = '<div class="laden">' + (roh ? text : text.replace(/&/g, '&amp;').replace(/</g, '&lt;')) + '</div>';
+}
+
+async function starten() {
+  if (!anmeldungPruefen()) return;
+  ladeText('Liste wird geholt …');
+  try {
+    if (!await datenHolen()) { anmeldungPruefen(); return; }
+  } catch (e) {
+    ladeText('<b>Die Liste konnte nicht geladen werden.</b><br>'
+      + String(e.message || e) + '<br><br>Die Anmeldung besteht weiter — '
+      + 'einmal neu laden genuegt meist.', true);
+    return;
+  }
+  const t0 = performance.now();
+  INDEX = new Index(DATEN);
+  const bau = Math.round(performance.now() - t0);
+  const adr = DATEN.reduce((n, r) => n + (r.adressen || []).length, 0);
+  document.getElementById('bestand').innerHTML =
+    DATEN.length.toLocaleString('de-DE') + ' Schlüssel-Datensätze<br>' +
+    adr.toLocaleString('de-DE') + ' durchsuchbare Adresszeilen<br>' +
+    DATEN.filter(r => r.general).length + ' Generalschlüssel<br>' +
+    'Stand der Liste: ' + STAND + '<br>' +
+    '<span style="color:var(--leise)">Suchindex in ' + bau + ' ms gebaut</span>';
+  zeigen();
+  window.__bereit = true;
+}
+
+setTimeout(() => { leisteMessen(); starten(); }, 30);
+
+// Für die automatische Prüfung (cloud-probe.py).
+window.__test = (q, n) => (INDEX ? INDEX.suche(q).slice(0, n || 8).map(t => ({
+  nr: t.satz.nr, adr: t.satz.standort_roh, versorgt: t.satz.versorgt_roh,
+  punkte: +t.punkte.toFixed(2), general: t.satz.general,
+})) : null);
+window.__anzahl = (q) => (INDEX ? INDEX.suche(q, 99999).length : -1);
+window.__zuruecksetzen = () => {
+  try { localStorage.removeItem(S_SITZUNG); } catch (e) {}
+  DATEN = null; INDEX = null;
+  anmeldungPruefen();
+};
+</script>
+</body>
+</html>
