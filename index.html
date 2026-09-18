@@ -2,7 +2,17 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- 🔴 Gegen das Verrutschen beim Bedienen mit einer Hand. Der Meta-Eintrag
+     oben allein reicht NICHT: Safari auf dem iPhone ignoriert `user-scalable`
+     seit iOS 10 bewusst. Was dort wirkt, sind die Gesten-Ereignisse; was gegen
+     den Doppeltipp-Zoom wirkt, ist `touch-action` im Stil weiter unten.
+     Drei Stellen fuer eine Sache - keine davon ist ueberfluessig. -->
+<script>
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+document.addEventListener('gestureend', e => e.preventDefault());
+</script>
 <title>Schlüsselliste</title>
 <!-- Das Icon: Browser-Tab und, wenn jemand die Seite aufs Handy legt,
      auch das Symbol auf dem Startbildschirm. In der Einzeldatei wird es
@@ -55,6 +65,10 @@ body {
   font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   padding-bottom: calc(var(--leiste) + 20px + env(safe-area-inset-bottom));
   overscroll-behavior-y: none;
+  /* Verhindert den Doppeltipp-Zoom, laesst aber Tippen und Wischen in Ruhe.
+     `none` waere falsch: dann liesse sich die Trefferliste nicht mehr
+     scrollen. */
+  touch-action: manipulation;
 }
 
 /* ---------- Kopf + Suchfeld ---------- */
@@ -309,10 +323,59 @@ nav svg { width: 24px; height: 24px; }
   </main>
 </div>
 
+<style>
+/* ---------- Anmeldung ----------
+   Eigener Stil, weil diese Maske das Erste ist, was jemand von der App sieht,
+   und weil sie in der Netz-Fassung etwas anderes leistet als in der oertlichen:
+   dort war sie eine Hoeflichkeit vor Daten, die ohnehin in der Datei lagen,
+   hier ist sie die Stelle, an der entschieden wird, ob es Daten gibt.
+
+   🔴 Gemessen, nicht geschaetzt: bei 390 px ist jeder Knopf 174 px breit und
+      nichts ragt heraus. Ein Bildschirmabzug aus Chrome zeigte hier zweimal
+      einen Ueberlauf, den es nicht gab - Chrome haelt sich nicht an die
+      Fensterbreite und schneidet das Bild einfach ab. */
+#anmeldung main {
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: 100dvh; padding: 32px 20px calc(32px + env(safe-area-inset-bottom));
+  max-width: 420px;
+}
+#anm-kopf { text-align: center; margin-bottom: 26px; }
+#anm-kopf img {
+  width: 72px; height: 72px; border-radius: 18px; display: block; margin: 0 auto 14px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+}
+#anm-kopf h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+#anm-unter { margin: 6px 0 0; color: var(--leise); font-size: 15px; }
+
+#anmeldung .wahl { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+#anmeldung .wahl button {
+  padding: 15px 10px; font-size: 16px; font-weight: 600; border-radius: 14px;
+  border: 1px solid var(--linie); background: var(--karte);
+  transition: transform .08s, border-color .12s;
+}
+#anmeldung .wahl button:active { transform: scale(.97); border-color: var(--akzent); }
+
+#anmeldung .feld { margin-bottom: 14px; }
+#anmeldung .feld .titel { font-size: 13px; color: var(--leise); margin-bottom: 6px; }
+#anmeldung input[type=password] {
+  width: 100%; padding: 15px 16px;
+  /* 16 px ist eine Untergrenze, keine Geschmacksfrage: darunter zoomt iOS
+     beim Antippen von selbst in das Feld hinein. */
+  font-size: 17px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--linie); border-radius: 14px; outline: none;
+}
+#anmeldung input[type=password]:focus { border-color: var(--akzent); }
+#anmeldung .knopf { border-radius: 14px; padding: 15px; font-size: 16px; }
+#anm-hinweis { font-size: 13px; color: var(--leise); margin: 18px 0 0; text-align: center; }
+</style>
+
 <div id="anmeldung" hidden>
   <main>
-    <h1 style="margin:8px 0 4px;font-size:22px">Schlüsselliste</h1>
-    <p id="anm-unter">Wer arbeitet mit dem Gerät?</p>
+    <div id="anm-kopf">
+      <img src="icon.png" alt="">
+      <h1>Schlüsselliste</h1>
+      <p id="anm-unter">Wer arbeitet mit dem Gerät?</p>
+    </div>
 
     <div id="anm-wahl"><div class="wahl" id="monteur-wahl"></div></div>
 
@@ -325,6 +388,8 @@ nav svg { width: 24px; height: 24px; }
       <div id="anm-fehler" class="fehler" hidden></div>
       <button class="knopf" id="anm-los">Anmelden</button>
       <button class="knopf zweit" id="anm-zurueck">‹ Anderer Monteur</button>
+      <p id="anm-hinweis">Beim ersten Mal das Startpasswort eingeben —
+        danach legst du dein eigenes fest.</p>
     </div>
 
     <div id="anm-neu" hidden>
@@ -360,7 +425,7 @@ nav svg { width: 24px; height: 24px; }
   </button>
 </nav>
 
-<script src="suche.js?v=20260918-a1e08bda"></script>
+<script src="suche.js?v=20260918-ad51a001"></script>
 <script>
 // ---------- Anmeldung (Supabase) ----------
 /* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
@@ -945,7 +1010,7 @@ async function starten() {
    zuverlaessig. Hilft auch das nicht, kommt eine Leiste statt einer
    Endlosschleife: zweimal dasselbe zu versuchen und auf ein anderes Ergebnis
    zu hoffen, waere keine Loesung. */
-const FASSUNG = '20260918-a1e08bda';
+const FASSUNG = '20260918-ad51a001';
 
 function neueFassungZeigen(neu) {
   if (document.getElementById('fassung-leiste')) return;
