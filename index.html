@@ -312,24 +312,37 @@ nav svg { width: 24px; height: 24px; }
 <div id="anmeldung" hidden>
   <main>
     <h1 style="margin:8px 0 4px;font-size:22px">Schlüsselliste</h1>
-    <p id="anm-unter">Bitte anmelden</p>
+    <p id="anm-unter">Wer arbeitet mit dem Gerät?</p>
 
-    <div id="anm-form">
+    <div id="anm-wahl"><div class="wahl" id="monteur-wahl"></div></div>
+
+    <div id="anm-pin" hidden>
       <div class="feld">
-        <div class="titel">E-Mail</div>
-        <input id="anm-mail" type="email" inputmode="email" autocomplete="username"
-               autocapitalize="off" autocorrect="off" placeholder="name@beispiel.de">
-      </div>
-      <div class="feld">
-        <div class="titel">Passwort</div>
+        <div class="titel" id="pin-titel">Passwort</div>
         <input id="anm-pw" type="password" autocomplete="current-password"
                placeholder="Passwort">
       </div>
       <div id="anm-fehler" class="fehler" hidden></div>
       <button class="knopf" id="anm-los">Anmelden</button>
-      <p style="font-size:13px;color:var(--leise);margin-top:14px">
-        Zugänge werden vergeben, nicht selbst angelegt. Wer keinen hat,
-        bekommt keinen Einblick in die Liste.</p>
+      <button class="knopf zweit" id="anm-zurueck">‹ Anderer Monteur</button>
+    </div>
+
+    <div id="anm-neu" hidden>
+      <p style="font-size:14px;color:var(--leise);margin:0 0 12px">
+        Das war das Startpasswort. Bitte jetzt ein eigenes festlegen —
+        ohne das gibt der Server die Liste nicht heraus.</p>
+      <div class="feld">
+        <div class="titel">Neues Passwort (mindestens 8 Zeichen)</div>
+        <input id="neu-pw" type="password" autocomplete="new-password"
+               placeholder="neues Passwort">
+      </div>
+      <div class="feld">
+        <div class="titel">Noch einmal</div>
+        <input id="neu-pw2" type="password" autocomplete="new-password"
+               placeholder="zur Sicherheit wiederholen">
+      </div>
+      <div id="neu-fehler" class="fehler" hidden></div>
+      <button class="knopf" id="neu-los">Passwort speichern</button>
     </div>
   </main>
 </div>
@@ -373,10 +386,25 @@ function sichere(schluessel, wert) {
   try { localStorage.setItem(schluessel, JSON.stringify(wert)); } catch (e) {}
 }
 
-const anmEl     = document.getElementById('anmeldung');
-const mailFeld  = document.getElementById('anm-mail');
-const pwFeld    = document.getElementById('anm-pw');
-const anmFehler = document.getElementById('anm-fehler');
+/* Zehn feste Zugaenge, Monteur 1 bis 10. Angemeldet wird gegen Supabase, und
+   das braucht eine Adresse — die baut die App aus der Nummer. Auf dem Schirm
+   steht deshalb nur "Monteur 3", nicht "monteur3@sl.local": eine Adresse, die
+   niemand je bekommt, waere nur eine Gelegenheit, sich zu vertippen. */
+const MONTEURE = 10;
+const adresse = (nr) => 'monteur' + nr + '@sl.local';
+
+const anmEl      = document.getElementById('anmeldung');
+const wahlEl     = document.getElementById('monteur-wahl');
+const wahlBlock  = document.getElementById('anm-wahl');
+const pinBlock   = document.getElementById('anm-pin');
+const neuBlock   = document.getElementById('anm-neu');
+const pwFeld     = document.getElementById('anm-pw');
+const neuFeld    = document.getElementById('neu-pw');
+const neuFeld2   = document.getElementById('neu-pw2');
+const anmFehler  = document.getElementById('anm-fehler');
+const neuFehler  = document.getElementById('neu-fehler');
+const anmUnter   = document.getElementById('anm-unter');
+let gewaehlt = null;
 
 function fehlerZeigen(text) {
   anmFehler.textContent = text;
@@ -384,6 +412,48 @@ function fehlerZeigen(text) {
 }
 
 function sitzung() { return lade(S_SITZUNG, null); }
+
+function monteurKnoepfe() {
+  wahlEl.innerHTML = '';
+  for (let i = 1; i <= MONTEURE; i++) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.monteur = String(i);
+    b.textContent = 'Monteur ' + i;
+    b.onclick = () => zurEingabe(i);
+    wahlEl.appendChild(b);
+  }
+}
+
+function zurEingabe(nr) {
+  gewaehlt = nr;
+  wahlBlock.hidden = true;
+  neuBlock.hidden = true;
+  pinBlock.hidden = false;
+  anmUnter.textContent = 'Monteur ' + nr;
+  pwFeld.value = '';
+  fehlerZeigen('');
+  pwFeld.focus();
+}
+
+function zurWahl() {
+  gewaehlt = null;
+  pinBlock.hidden = true;
+  neuBlock.hidden = true;
+  wahlBlock.hidden = false;
+  anmUnter.textContent = 'Wer arbeitet mit dem Gerät?';
+  monteurKnoepfe();
+}
+
+function zumWechsel() {
+  wahlBlock.hidden = true;
+  pinBlock.hidden = true;
+  neuBlock.hidden = false;
+  anmUnter.textContent = 'Monteur ' + (gewaehlt || '') + ' – Passwort ändern';
+  neuFeld.value = ''; neuFeld2.value = '';
+  neuFehler.hidden = true;
+  neuFeld.focus();
+}
 
 /* Ein Zugangsschein gilt eine Stunde. Wir erneuern ihn eine Minute vor Ablauf
    — nicht erst, wenn ein Abruf scheitert: ein Fehlschlag mitten im Laden sieht
@@ -406,19 +476,25 @@ async function scheinHolen() {
 }
 
 function sitzungSpeichern(d) {
+  const m = (d.user && d.user.app_metadata) || {};
   sichere(S_SITZUNG, {
     access_token: d.access_token,
     refresh_token: d.refresh_token,
-    mail: d.user && d.user.email,
+    monteur: m.monteur || gewaehlt,
+    /* Nur fuer die Maske. Die Bedingung selbst haengt NICHT hieran — der
+       Server gibt die Liste nicht heraus, solange das Startpasswort steht.
+       Ein Merkmal im Browser, das ueber eine Sperre entscheidet, ist keine
+       Sperre, sondern eine Einladung. */
+    muss_wechseln: m.muss_wechseln === true,
     ablauf: Date.now() + (d.expires_in || 3600) * 1000,
     seit: new Date().toISOString(),
   });
 }
 
 async function anmeldenVersuch() {
-  const mail = (mailFeld.value || '').trim();
+  if (gewaehlt === null) return;
   const pw = pwFeld.value || '';
-  if (!mail || !pw) return fehlerZeigen('E-Mail und Passwort eingeben.');
+  if (!pw) return fehlerZeigen('Passwort eingeben.');
   fehlerZeigen('');
 
   let r;
@@ -426,21 +502,68 @@ async function anmeldenVersuch() {
     r = await fetch(SB_URL + '/auth/v1/token?grant_type=password', {
       method: 'POST',
       headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: mail, password: pw }),
+      body: JSON.stringify({ email: adresse(gewaehlt), password: pw }),
     });
   } catch (e) {
     /* 🔴 Kein Netz ist etwas anderes als "Passwort falsch". Wer das in einen
        Topf wirft, schickt jemanden sein richtiges Passwort dreimal neu
        eintippen, waehrend das Funkloch schuld ist. */
-    return fehlerZeigen('Keine Verbindung. Netz pruefen und noch einmal.');
+    return fehlerZeigen('Keine Verbindung. Netz prüfen und noch einmal.');
   }
   if (!r.ok) {
     return fehlerZeigen(r.status === 400
-      ? 'E-Mail oder Passwort stimmt nicht.'
+      ? 'Passwort stimmt nicht.'
       : 'Anmeldung abgelehnt (' + r.status + ').');
   }
   sitzungSpeichern(await r.json());
   pwFeld.value = '';
+  if (sitzung().muss_wechseln) return zumWechsel();
+  await starten();
+}
+
+async function passwortSetzen() {
+  const a = neuFeld.value || '', b = neuFeld2.value || '';
+  const sagen = (t) => { neuFehler.textContent = t; neuFehler.hidden = !t; };
+  if (a.length < 8) return sagen('Mindestens 8 Zeichen.');
+  if (a !== b) return sagen('Die beiden Eingaben sind nicht gleich.');
+  sagen('');
+
+  const schein = await scheinHolen();
+  if (!schein) { zurWahl(); return; }
+  let r;
+  try {
+    r = await fetch(SB_URL + '/functions/v1/passwort', {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + schein,
+                 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passwort: a }),
+    });
+  } catch (e) { return sagen('Keine Verbindung. Netz prüfen und noch einmal.'); }
+  if (!r.ok) {
+    let grund = 'Fehlgeschlagen (' + r.status + ').';
+    try { grund = (await r.json()).fehler || grund; } catch (_) {}
+    return sagen(grund);
+  }
+  /* 🔴 Gemessen am 18.09.2026: eine Passwortaenderung wirft bei Supabase ALLE
+     laufenden Anmeldungen des Benutzers raus — auch die, die gerade eben noch
+     die Aenderung durchgefuehrt hat. Der Schein in der Hand ist in dem Moment
+     wertlos. Ohne diese Neuanmeldung stuende direkt nach dem erfolgreichen
+     Wechsel "Anmeldung abgelehnt" auf dem Schirm, und niemand kaeme darauf,
+     dass gerade alles geklappt hat. */
+  let r2;
+  try {
+    r2 = await fetch(SB_URL + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: adresse(gewaehlt), password: a }),
+    });
+  } catch (e) { return sagen('Passwort ist gesetzt — bitte neu anmelden.'); }
+  if (!r2.ok) {
+    zurWahl();
+    return fehlerZeigen('Passwort ist gesetzt. Bitte damit anmelden.');
+  }
+  sitzungSpeichern(await r2.json());
+  neuFeld.value = ''; neuFeld2.value = '';
   await starten();
 }
 
@@ -450,12 +573,20 @@ function abmelden() {
   anmeldungPruefen();
 }
 
-/* Der einzige Ort, der entscheidet, ob die Anmeldung zu sehen ist. */
+/* Der einzige Ort, der entscheidet, ob die Anmeldung zu sehen ist.
+   Ein noch nicht gewechseltes Startpasswort zaehlt dabei als "nicht fertig" —
+   sonst laege beim Neuladen die Suche vorne, waehrend der Server nichts
+   herausgibt, und auf dem Schirm stuende eine leere Liste ohne Grund. */
 function anmeldungPruefen() {
-  const offen = !sitzung();
+  const s = sitzung();
+  const offen = !s || s.muss_wechseln;
   anmEl.hidden = !offen;
   anmEl.classList.toggle('auf', offen);
   document.querySelector('nav').style.display = offen ? 'none' : '';
+  if (offen) {
+    if (s && s.muss_wechseln) { gewaehlt = s.monteur || null; zumWechsel(); }
+    else zurWahl();
+  }
   angemeldetZeigen();
   return !offen;
 }
@@ -466,15 +597,19 @@ function angemeldetZeigen() {
   const s = sitzung();
   if (!s) { ziel.textContent = 'nicht angemeldet'; return; }
   const seit = new Date(s.seit);
-  ziel.textContent = (s.mail || 'angemeldet') + ' – seit '
+  ziel.textContent = 'Monteur ' + (s.monteur || '?') + ' – seit '
     + seit.toLocaleDateString('de-DE') + ', '
     + seit.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
 }
 
 document.getElementById('anm-los').onclick = anmeldenVersuch;
+document.getElementById('anm-zurueck').onclick = zurWahl;
+document.getElementById('neu-los').onclick = passwortSetzen;
 document.getElementById('abmelden').onclick = abmelden;
 pwFeld.addEventListener('keydown', e => { if (e.key === 'Enter') anmeldenVersuch(); });
-[mailFeld, pwFeld].forEach(f => f.addEventListener('input', () => fehlerZeigen('')));
+neuFeld2.addEventListener('keydown', e => { if (e.key === 'Enter') passwortSetzen(); });
+pwFeld.addEventListener('input', () => fehlerZeigen(''));
+monteurKnoepfe();
 
 // ---------- Thema ----------
 const themaWahl = document.getElementById('thema-wahl');
