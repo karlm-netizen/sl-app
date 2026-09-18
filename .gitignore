@@ -1,12 +1,18 @@
 # Zweite Wache. Die erste ist cloud-bauen.py, das die Seite nach Datensaetzen
-# absucht, bevor es sie schreibt. Diese Liste faengt, was jemand von Hand
-# hierher legt - ein einziger Fehlgriff waere hier oeffentlich.
+# absucht und fremde Bilder ablehnt, bevor es hier etwas hinlegt.
 daten.js
 daten.json
 daten.json.gz
 Schluesselliste.html
 korrekturen.json
-*.png
-*.pdf
 supabase-konfig.json
 supabase-zugang.json
+
+# Bildschirmabzuege zeigen echte Namen und Nummern. Alle Bilder sind gesperrt,
+# nur die beiden Symbole sind ausgenommen - einzeln benannt, nicht per Muster.
+*.png
+*.jpg
+*.jpeg
+*.webp
+!icon.png
+!icon-32.png
