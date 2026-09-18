@@ -59,11 +59,25 @@ html, body { margin: 0; padding: 0; }
    sie zu knapp: die letzte Trefferkarte lag halb unter der Leiste. */
 :root { --leiste: 62px; }
 
+/* 🔴 Festes App-Gerüst statt einer Seite, die als Ganzes scrollt.
+   Der Grund ist Karls Meldung vom 18.09.2026: "Die Leiste kommt mit hoch wenn
+   ich die Liste runterscrolle". Safari auf dem iPhone blendet beim Scrollen
+   seine eigene Leiste ein und aus und vermisst dabei das Fenster neu — alles,
+   was mit `position: fixed` am unteren Rand klebt, springt dabei mit.
+   Dagegen hilft kein Feinschliff: die Leiste darf nicht mehr am Fenster
+   haengen. Also bekommt der Koerper eine feste Hoehe (100dvh, die dynamische
+   Variante — 100vh waere genau die Zahl, die Safari falsch meldet), und nur
+   die Liste darin scrollt. Die Leiste ist dann ein ganz normaler Kasten am
+   unteren Ende und kann nicht mehr wandern. */
+html { height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
   font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  padding-bottom: calc(var(--leiste) + 20px + env(safe-area-inset-bottom));
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   overscroll-behavior-y: none;
   /* Verhindert den Doppeltipp-Zoom, laesst aber Tippen und Wischen in Ruhe.
      `none` waere falsch: dann liesse sich die Trefferliste nicht mehr
@@ -154,12 +168,17 @@ mark { background: var(--akzent-bg); color: inherit; border-radius: 3px; padding
 
 /* ---------- Detail ---------- */
 #detail {
-  position: fixed; inset: 0; z-index: 40; background: var(--bg);
+  /* Endet ueber der Leiste statt unter ihr. Vorher lag die Leiste darueber
+     und das letzte Feld verschwand darunter — deshalb stand hier ein
+     Abstand von Leistenhoehe plus 24 px. Jetzt reicht der Platz von selbst,
+     und die Leiste bleibt bedienbar: wer im Detail steht, kommt weiter zur
+     Suche, ohne erst zurueckgehen zu muessen. */
+  position: fixed; left: 0; right: 0; top: 0;
+  bottom: var(--leiste);
+  z-index: 40; background: var(--bg);
   overflow-y: auto; display: none;
-  /* 🔴 Die Leiste liegt ÜBER der Detailansicht (z-index 50 gegen 40). Ohne
-     diesen Abstand verschwindet das letzte Feld darunter — am PC war genau
-     das der Fall, dort fehlte der Platz unten. */
-  padding: 0 0 calc(var(--leiste) + 24px + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
+  padding: 0 0 24px;
 }
 #detail.auf { display: block; }
 .d-kopf {
@@ -242,10 +261,17 @@ mark { background: var(--akzent-bg); color: inherit; border-radius: 3px; padding
 
 /* ---------- Navigation ---------- */
 nav {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  /* Nicht mehr `fixed`: als letztes Kind des Koerpers sitzt die Leiste von
+     selbst unten und bleibt dort, ohne am Fenster zu haengen. */
+  flex: 0 0 auto; z-index: 50;
   display: grid; grid-template-columns: repeat(2, 1fr);
   background: var(--karte); border-top: 1px solid var(--linie);
   padding-bottom: env(safe-area-inset-bottom);
+}
+/* Die Seiten scrollen jeweils fuer sich, nicht der ganze Koerper. */
+#seite-suche, #seite-einst {
+  flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 nav button {
   border: 0; background: none; cursor: pointer; color: var(--leise);
@@ -444,7 +470,7 @@ nav svg { width: 24px; height: 24px; }
   </button>
 </nav>
 
-<script src="suche.js?v=20260918-b470bb9b"></script>
+<script src="suche.js?v=20260918-e7a4e0e6"></script>
 <script>
 // ---------- Anmeldung (Supabase) ----------
 /* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
@@ -739,7 +765,8 @@ function seiteZeigen(welche) {
     if (el) el.hidden = (k !== welche);
   }
   zuDetail(null);
-  window.scrollTo(0, 0);
+  const el = document.getElementById(seiten[welche]);
+  if (el) el.scrollTop = 0;
 }
 
 // ---------- Index ----------
@@ -956,21 +983,17 @@ const detailEl = document.getElementById('detail');
    Ebene bewegt — und man "kommt nicht wieder hoch". */
 let listePos = 0;
 
+/* Seit dem festen App-Geruest scrollt der Koerper gar nicht mehr, sondern die
+   Suchseite fuer sich. Die Detailansicht liegt als eigene Ebene darueber und
+   hat ihren eigenen Lauf — die beiden koennen sich also nicht mehr in die
+   Quere kommen. Gemerkt werden muss nur noch die Stelle, an der die Liste
+   stand: bei 10.602 Datensaetzen ist "wieder ganz oben" kein
+   Schoenheitsfehler, sondern neues Suchen. */
 function listeSperren(an) {
-  const b = document.body;
-  if (an) {
-    listePos = window.scrollY || 0;
-    b.style.position = 'fixed';
-    b.style.top = -listePos + 'px';
-    b.style.left = '0';
-    b.style.right = '0';
-  } else {
-    b.style.position = '';
-    b.style.top = '';
-    b.style.left = '';
-    b.style.right = '';
-    window.scrollTo(0, listePos);
-  }
+  const liste = document.getElementById('seite-suche');
+  if (!liste) return;
+  if (an) listePos = liste.scrollTop;
+  else liste.scrollTop = listePos;
 }
 
 function zuDetail(s, adr) {
@@ -1113,7 +1136,7 @@ async function starten() {
    zuverlaessig. Hilft auch das nicht, kommt eine Leiste statt einer
    Endlosschleife: zweimal dasselbe zu versuchen und auf ein anderes Ergebnis
    zu hoffen, waere keine Loesung. */
-const FASSUNG = '20260918-b470bb9b';
+const FASSUNG = '20260918-e7a4e0e6';
 
 function neueFassungZeigen(neu) {
   if (document.getElementById('fassung-leiste')) return;
