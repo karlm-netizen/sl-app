@@ -360,7 +360,7 @@ nav svg { width: 24px; height: 24px; }
   </button>
 </nav>
 
-<script src="suche.js?v=20260918-4caa2a74"></script>
+<script src="suche.js?v=20260918-a1e08bda"></script>
 <script>
 // ---------- Anmeldung (Supabase) ----------
 /* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
@@ -945,7 +945,7 @@ async function starten() {
    zuverlaessig. Hilft auch das nicht, kommt eine Leiste statt einer
    Endlosschleife: zweimal dasselbe zu versuchen und auf ein anderes Ergebnis
    zu hoffen, waere keine Loesung. */
-const FASSUNG = '20260918-4caa2a74';
+const FASSUNG = '20260918-a1e08bda';
 
 function neueFassungZeigen(neu) {
   if (document.getElementById('fassung-leiste')) return;
@@ -960,6 +960,20 @@ function neueFassungZeigen(neu) {
   document.body.appendChild(l);
 }
 
+/* Die Adresse bleibt sauber. Das ?v=… ist nur ein Mittel, den Zwischen-
+   speicher zu umgehen, und verschwindet sofort wieder aus der Adresszeile —
+   wer die Seite auf den Startbildschirm legt, soll dort keine Fassungsnummer
+   von heute festnageln. Gemerkt wird der Versuch stattdessen in der Sitzung:
+   ein Merker, der beim Schliessen des Tabs von selbst verfaellt. */
+const S_VERSUCH = 'sl.fassung-versuch';
+
+(function adresseAufraeumen() {
+  if (!location.search) return;
+  const p = new URLSearchParams(location.search);
+  if (!p.has('v')) return;
+  try { history.replaceState({}, '', location.pathname); } catch (e) {}
+})();
+
 async function fassungPruefen() {
   let neu = '';
   try {
@@ -969,8 +983,14 @@ async function fassungPruefen() {
   } catch (e) { return; }
   if (!neu || neu === FASSUNG) return;
 
-  // Schon einmal mit genau dieser Fassung umgeleitet? Dann nicht noch einmal.
-  if (new URLSearchParams(location.search).get('v') === neu) return neueFassungZeigen(neu);
+  /* Schon einmal fuer genau diese Fassung neu geladen und es hat nichts
+     genuetzt? Dann nicht noch einmal — zweimal dasselbe zu versuchen und auf
+     ein anderes Ergebnis zu hoffen, waere keine Loesung, sondern eine
+     Schleife, aus der der Benutzer nicht herauskommt. */
+  let schon = null;
+  try { schon = sessionStorage.getItem(S_VERSUCH); } catch (e) {}
+  if (schon === neu) return neueFassungZeigen(neu);
+  try { sessionStorage.setItem(S_VERSUCH, neu); } catch (e) {}
   location.replace(location.pathname + '?v=' + encodeURIComponent(neu));
 }
 
