@@ -121,6 +121,24 @@ body {
 #suchfeld::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
 .zaehler { margin-top: 8px; font-size: 13px; color: var(--leise); min-height: 18px; }
 
+/* ---------- Farblegende ----------
+   Zwei Spalten, drei Zeilen. Zwei Spalten und nicht drei, weil "In
+   Beschaffung" und "Passt teilweise" bei 390 px sonst umbrechen — und eine
+   Legende, in der die Woerter zerfallen, erklaert nichts mehr. */
+#legende {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 6px 14px; padding: 12px 16px 4px;
+  max-width: 760px; margin: 0 auto;
+  font-size: 13px; color: var(--leise);
+}
+#legende div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#legende i {
+  flex: 0 0 auto; width: 11px; height: 11px; border-radius: 50%;
+  /* Der schwarze Punkt verschwindet im dunklen Untergrund - ein heller Rand
+     haelt ihn sichtbar, ohne die Farbe zu verfaelschen. */
+  box-shadow: 0 0 0 1px rgba(128, 138, 155, .45);
+}
+
 /* ---------- Karten ---------- */
 main { padding: 12px 16px 24px; max-width: 760px; margin: 0 auto; }
 .satz {
@@ -309,6 +327,21 @@ nav svg { width: 24px; height: 24px; }
     </div>
     <div class="zaehler" id="zaehler"></div>
   </div>
+  <!-- 🔴 Die Farben tragen in dieser Liste eine Bedeutung, die sonst NIRGENDS
+       steht: im PDF ist der Status ausschliesslich die Zellenfarbe. Wer die
+       App zum ersten Mal aufmacht, sieht bunte Punkte und weiss nicht, ob
+       Gelb gut oder schlecht ist. Die Legende steht deshalb oben und nicht in
+       den Einstellungen — dort haette sie niemand gesucht.
+       Sie liegt AUSSERHALB von #ergebnis: dessen Inhalt wird bei jeder
+       Eingabe neu geschrieben, die Legende waere jedesmal mit weg. -->
+  <div id="legende" aria-label="Was die Farben bedeuten">
+    <div><i class="s-vollstaendig"></i>Vollständig</div>
+    <div><i class="s-ohne_schluessel"></i>Ohne Schlüssel</div>
+    <div><i class="s-in_beschaffung"></i>In Beschaffung</div>
+    <div><i class="s-passt_teilweise"></i>Passt teilweise</div>
+    <div><i class="s-passt_nicht"></i>Passt nicht</div>
+    <div><i class="s-unklar"></i>Unklar</div>
+  </div>
   <main id="ergebnis"><div class="laden">Liste wird geladen …</div></main>
 </div>
 
@@ -414,17 +447,20 @@ nav svg { width: 24px; height: 24px; }
       <p id="anm-unter">Wer arbeitet mit dem Gerät?</p>
     </div>
 
-    <div id="anm-wahl"><div class="wahl" id="monteur-wahl"></div></div>
-
-    <div id="anm-pin" hidden>
+    <div id="anm-pin">
       <div class="feld">
-        <div class="titel" id="pin-titel">Passwort</div>
+        <div class="titel">Benutzername</div>
+        <input id="anm-benutzer" type="text" autocomplete="username"
+               autocapitalize="words" autocorrect="off" spellcheck="false"
+               enterkeyhint="next" placeholder="z. B. Monteur 3">
+      </div>
+      <div class="feld">
+        <div class="titel">Passwort</div>
         <input id="anm-pw" type="password" autocomplete="current-password"
-               placeholder="Passwort">
+               enterkeyhint="go" placeholder="Passwort">
       </div>
       <div id="anm-fehler" class="fehler" hidden></div>
       <button class="knopf" id="anm-los">Anmelden</button>
-      <button class="knopf zweit" id="anm-zurueck">‹ Anderes Konto</button>
       <p id="anm-hinweis">Beim ersten Mal das Startpasswort eingeben —
         danach legst du dein eigenes fest.</p>
     </div>
@@ -547,7 +583,7 @@ nav svg { width: 24px; height: 24px; }
   </button>
 </nav>
 
-<script src="suche.js?v=20260918-e6405ea8"></script>
+<script src="suche.js?v=20260918-908bd014"></script>
 <script>
 // ---------- Anmeldung (Supabase) ----------
 /* Kein Bibliotheks-Einbau: die Anmeldung ist eine Handvoll HTTP-Aufrufe, und
@@ -585,11 +621,31 @@ const adresse = (nr) => 'monteur' + nr + '@sl.local';
 const NAMEN = { 1: 'Admin 1' };
 const nameVon = (nr) => NAMEN[nr] || ('Monteur ' + nr);
 
+/* 🔴 Aus dem eingetippten Namen wird die Anmeldeadresse.
+   Karls Ansage am 18.09.2026: "das was in den Kästchen steht soll eingetippt
+   werden" — also "Admin 1" und "Monteur 3", nicht monteur3@sl.local.
+
+   Gelesen wird nachsichtig: Gross- und Kleinschreibung egal, Leerzeichen egal,
+   "admin" ohne Zahl ist Konto 1. Wer sich vertippt, soll an der Stelle
+   scheitern, an der er sich wirklich vertan hat — am Passwort —, und nicht an
+   einem fehlenden Leerzeichen. Was NICHT nachsichtig ist: eine Nummer ausser
+   1 bis 10 gibt es nicht, und dann sagt die App das auch, statt eine
+   Anmeldung zu versuchen, die nur scheitern kann. */
+function kontoAus(text) {
+  const t = String(text || '').trim().toLowerCase();
+  if (!t) return null;
+  const zahl = (t.match(/\d+/) || [])[0];
+  if (zahl) {
+    const n = parseInt(zahl, 10);
+    return (n >= 1 && n <= MONTEURE) ? n : null;
+  }
+  return /^admin\b/.test(t) ? 1 : null;
+}
+
 const anmEl      = document.getElementById('anmeldung');
-const wahlEl     = document.getElementById('monteur-wahl');
-const wahlBlock  = document.getElementById('anm-wahl');
 const pinBlock   = document.getElementById('anm-pin');
 const neuBlock   = document.getElementById('anm-neu');
+const benutzFeld = document.getElementById('anm-benutzer');
 const pwFeld     = document.getElementById('anm-pw');
 const neuFeld    = document.getElementById('neu-pw');
 const neuFeld2   = document.getElementById('neu-pw2');
@@ -605,40 +661,16 @@ function fehlerZeigen(text) {
 
 function sitzung() { return lade(S_SITZUNG, null); }
 
-function monteurKnoepfe() {
-  wahlEl.innerHTML = '';
-  for (let i = 1; i <= MONTEURE; i++) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.dataset.monteur = String(i);
-    b.textContent = nameVon(i);
-    b.onclick = () => zurEingabe(i);
-    wahlEl.appendChild(b);
-  }
-}
-
-function zurEingabe(nr) {
-  gewaehlt = nr;
-  wahlBlock.hidden = true;
-  neuBlock.hidden = true;
-  pinBlock.hidden = false;
-  anmUnter.textContent = nameVon(nr);
-  pwFeld.value = '';
-  fehlerZeigen('');
-  pwFeld.focus();
-}
-
 function zurWahl() {
   gewaehlt = null;
-  pinBlock.hidden = true;
   neuBlock.hidden = true;
-  wahlBlock.hidden = false;
-  anmUnter.textContent = 'Wer arbeitet mit dem Gerät?';
-  monteurKnoepfe();
+  pinBlock.hidden = false;
+  anmUnter.textContent = 'Bitte anmelden';
+  pwFeld.value = '';
+  fehlerZeigen('');
 }
 
 function zumWechsel() {
-  wahlBlock.hidden = true;
   pinBlock.hidden = true;
   neuBlock.hidden = false;
   anmUnter.textContent = nameVon(gewaehlt) + ' – Passwort ändern';
@@ -686,9 +718,13 @@ function sitzungSpeichern(d) {
 }
 
 async function anmeldenVersuch() {
-  if (gewaehlt === null) return;
+  const nr = kontoAus(benutzFeld.value);
   const pw = pwFeld.value || '';
+  if (!benutzFeld.value.trim()) return fehlerZeigen('Benutzername eingeben.');
+  if (nr === null) return fehlerZeigen('Diesen Benutzernamen gibt es nicht. '
+    + 'Er heißt „Admin 1“ oder „Monteur 2“ bis „Monteur ' + MONTEURE + '“.');
   if (!pw) return fehlerZeigen('Passwort eingeben.');
+  gewaehlt = nr;
   fehlerZeigen('');
 
   let r;
@@ -711,6 +747,7 @@ async function anmeldenVersuch() {
   }
   sitzungSpeichern(await r.json());
   pwFeld.value = '';
+  sichere('sl.letzter', nameVon(nr));
   if (sitzung().muss_wechseln) return zumWechsel();
   await starten();
 }
@@ -779,7 +816,14 @@ function anmeldungPruefen() {
   document.querySelector('nav').style.display = offen ? 'none' : '';
   if (offen) {
     if (s && s.muss_wechseln) { gewaehlt = s.monteur || null; zumWechsel(); }
-    else zurWahl();
+    else {
+      zurWahl();
+      /* Der Name bleibt stehen, das Passwort nicht. Wer sich abmeldet, meldet
+         sich meist als derselbe wieder an — den Namen jedesmal neu zu tippen
+         waere Schikane, das Passwort stehenzulassen waere fahrlaessig. */
+      const letzter = lade('sl.letzter', '');
+      if (letzter && !benutzFeld.value) benutzFeld.value = letzter;
+    }
   }
   angemeldetZeigen();
   return !offen;
@@ -797,13 +841,12 @@ function angemeldetZeigen() {
 }
 
 document.getElementById('anm-los').onclick = anmeldenVersuch;
-document.getElementById('anm-zurueck').onclick = zurWahl;
 document.getElementById('neu-los').onclick = passwortSetzen;
 document.getElementById('abmelden').onclick = abmelden;
 pwFeld.addEventListener('keydown', e => { if (e.key === 'Enter') anmeldenVersuch(); });
 neuFeld2.addEventListener('keydown', e => { if (e.key === 'Enter') passwortSetzen(); });
-pwFeld.addEventListener('input', () => fehlerZeigen(''));
-monteurKnoepfe();
+benutzFeld.addEventListener('keydown', e => { if (e.key === 'Enter') pwFeld.focus(); });
+[benutzFeld, pwFeld].forEach(f => f.addEventListener('input', () => fehlerZeigen('')));
 
 // ---------- Thema ----------
 const themaWahl = document.getElementById('thema-wahl');
@@ -1229,7 +1272,7 @@ async function starten() {
    zuverlaessig. Hilft auch das nicht, kommt eine Leiste statt einer
    Endlosschleife: zweimal dasselbe zu versuchen und auf ein anderes Ergebnis
    zu hoffen, waere keine Loesung. */
-const FASSUNG = '20260918-e6405ea8';
+const FASSUNG = '20260918-908bd014';
 
 function neueFassungZeigen(neu) {
   if (document.getElementById('fassung-leiste')) return;
